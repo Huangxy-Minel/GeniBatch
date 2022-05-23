@@ -4,7 +4,11 @@ from plan_node import PlanNode
 
 class BatchPlan(object):
     '''
-    version: 1.1
+    version: 2.0
+    Update:
+    1. Update the data storage and interfaces
+    2. Update data struture to support parallel execution
+
     Describe the computational typology.
     Provide common encrypted matrix operator such as Add and Multiplication.
     Create before calculation and lazy operate.
@@ -38,6 +42,8 @@ class BatchPlan(object):
         self.root_nodes = []                        # each root node represents one CompTree
         self.matrix_shape = None                    # represents the shape of the output of this BatchPlan
         self.encrypted_flag = False                 # represents if output matrix is encrypted or not. default: false
+        self.nodes_list = []                        # each element in this list represents a level of nodes. nodes_list[0] is the lowest level in BatchPlan
+        self.data_node_map = {}                     # input_matrix:[plan_nodes]
         '''Use for Weaver'''
         self.vector_mem_size = vector_mem_size      # represents memory size of each vector. default: 1024bits
         self.vector_size = 0
@@ -47,15 +53,16 @@ class BatchPlan(object):
         Initialize Batch Plan from a matrix
         Input:
             matrixA: ndarray, a matrix
+            encrypted_flag: represents the matrix is encrypted or not
         '''
         if self.matrix_shape != None or self.root_nodes != []:
             raise NotImplementedError("This BatchPlan is not null. Don't use fromMatrix!")
         else:
             self.matrix_shape = matrixA.shape
+            self.data_node_map[matrixA] = []        # create a map space for input matrix to store related plan node
         for vec in matrixA:     
-            vec = vec.reshape(1, len(vec))
             new_node = PlanNode.fromVector(vec, encrypted_flag)
-            self.root_nodes.append(new_node)     # each root node represents a row vector
+            self.root_nodes.append(new_node)        # each root node represents a row vector
         self.encrypted_flag = encrypted_flag
         self.vector_size = len(matrixA[0])
         
