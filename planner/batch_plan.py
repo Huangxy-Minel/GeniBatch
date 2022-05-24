@@ -1,6 +1,9 @@
+import sys
+sys.path.append("..")
 import numpy as np
 import copy, math
 from plan_node import PlanNode
+from storage.data_store import DataStorage
 
 class BatchPlan(object):
     '''
@@ -35,18 +38,20 @@ class BatchPlan(object):
         2. Memory optimization
     '''
     
-    def __init__(self, vector_mem_size=1024):
+    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64):
         if vector_mem_size != 1024 and vector_mem_size!= 2048 and vector_mem_size != 4096:
             raise NotImplementedError("Vector memory size of batchplan should be 1024 or 2048 or 4096")
         '''Use for BatchPlan'''
         self.root_nodes = []                        # each root node represents one CompTree
+        self.opera_nodes_list = []                  # each element in this list represents a level of operation nodes. nodes_list[0] is the lowest level in BatchPlan
         self.matrix_shape = None                    # represents the shape of the output of this BatchPlan
-        self.encrypted_flag = False                 # represents if output matrix is encrypted or not. default: false
-        self.nodes_list = []                        # each element in this list represents a level of nodes. nodes_list[0] is the lowest level in BatchPlan
-        self.data_node_map = {}                     # input_matrix:[plan_nodes]
+        # self.encrypted_flag = False                 # represents if output matrix is encrypted or not. default: false
         '''Use for Weaver'''
         self.vector_mem_size = vector_mem_size      # represents memory size of each vector. default: 1024bits
-        self.vector_size = 0
+        self.element_mem_size = element_mem_size    # the memory size of one slot number
+        self.vector_size = 0                        # num of elements in each node
+        '''Use for data storage'''
+        self.data_storage = data_storage
 
     def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False):
         '''
@@ -58,14 +63,16 @@ class BatchPlan(object):
         if self.matrix_shape != None or self.root_nodes != []:
             raise NotImplementedError("This BatchPlan is not null. Don't use fromMatrix!")
         else:
+            '''update to current data store'''
             self.matrix_shape = matrixA.shape
-            self.data_node_map[matrixA] = []        # create a map space for input matrix to store related plan node
-        for vec in matrixA:     
-            new_node = PlanNode.fromVector(vec, encrypted_flag)
+            matrix_id = self.data_storage.addMatrix(matrixA)
+        for row_id in range(matrixA.shape[0]):
+            '''Create a vector node'''     
+            new_node = PlanNode.fromVector(matrix_id, False, row_id, 0, matrixA.shape[1], self.element_mem_size, encrypted_flag)
             self.root_nodes.append(new_node)        # each root node represents a row vector
-        self.encrypted_flag = encrypted_flag
-        self.vector_size = len(matrixA[0])
-        
+        # self.encrypted_flag = encrypted_flag
+        self.vector_size = matrixA.shape[1]
+    
     def matrixAdd(self, matrix_list:list, encrypted_flag_list:list):
         '''
         Primitive for user: Matrix Add

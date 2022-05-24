@@ -12,12 +12,13 @@ class PlanNode(object):
     TODO: Better encapsulation. Specify which variables are inaccessible, exp: PlanNode._operatror
     '''
 
-    def __init__(self, operator=None, batch_data=None, max_element_size=0):
+    def __init__(self, operator=None, batch_data=None, max_slot_size=0, encrypted_flag=False):
         '''Node properties'''
         self.operator = operator            # ADD, MUL or Merge
         self.batch_data = batch_data        # vector data of this node; type: np.ndarray
+        self.data_idx = ()
         '''Vector properties'''
-        self.max_element_size = max_element_size          # represent max memory bits of each element
+        self.max_slot_size = max_slot_size          # represent max memory bits of each slot
         self.shape = (0,0)
         '''Tree'''
         self.parent = None           # The parent node, for root node, parent = None
@@ -25,31 +26,22 @@ class PlanNode(object):
         self.size = 0                # children num
         '''Node attributes'''
         self.state = 0               # represents if the output data has been prepared or not. 0: not finished; 1: finished
-        self.encrypted_flag = False             # represents if batch_data is encrypted or not. default: false
+        self.encrypted_flag = encrypted_flag             # represents if batch_data is encrypted or not. default: false
 
     @staticmethod
-    def fromVector(vector:np.ndarray, encrypted_flag:bool):
+    def fromVector(matrix_id, vector_type:bool, vector_id, vector_len, slot_start_idx, slot_mem, encrypted_flag:bool):
         '''
-        Create a node from a vector
+        Create a node from a vector but do not set the batch data
         Input:
-            vector: ndarray, represents the input data
-            encrypted_flag: bool, represents the encryption state
+
         '''
-        if vector.shape[0] != 1:
-            raise NotImplementedError("Input vector should be row vector! ")
-        input_vec = copy.deepcopy(vector)
-        new_node = PlanNode(batch_data=input_vec)
-        new_node.shape = vector.shape
-        new_node.encrypted_flag = encrypted_flag
-        '''Calculate memory size of each element'''
-        if encrypted_flag:
-            new_node.max_element_size = math.ceil(math.log(vector[0][0], 2))
-            if new_node.max_element_size % 8 != 0:
-                raise NotImplementedError("Memory size of each encrypted element should be Multiples of 8!")
+        new_node = PlanNode(max_slot_size=slot_mem, encrypted_flag=encrypted_flag)
+        new_node.data_idx = (matrix_id, vector_type, vector_id, vector_len)
+        if vector_type:
+            new_node.shape = (vector_len, 1)
         else:
-            max_element = vector.max()
-            new_node.max_element_size = math.ceil(math.log(max_element, 2))
-        new_node.state = 1      # vector node has output data after initialization
+            new_node.shape = (1, vector_len)
+        new_node.encrypted_flag = encrypted_flag
         return new_node
 
     @staticmethod
