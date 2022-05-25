@@ -44,6 +44,7 @@ class BatchPlan(object):
         '''Use for BatchPlan'''
         self.root_nodes = []                        # each root node represents one CompTree
         self.opera_nodes_list = []                  # each element in this list represents a level of operation nodes. nodes_list[0] is the lowest level in BatchPlan
+        self.vector_nodes_list = []
         self.matrix_shape = None                    # represents the shape of the output of this BatchPlan
         # self.encrypted_flag = False                 # represents if output matrix is encrypted or not. default: false
         '''Use for Weaver'''
@@ -68,7 +69,8 @@ class BatchPlan(object):
             matrix_id = self.data_storage.addMatrix(matrixA)
         for row_id in range(matrixA.shape[0]):
             '''Create a vector node'''     
-            new_node = PlanNode.fromVector(matrix_id, False, row_id, 0, matrixA.shape[1], self.element_mem_size, encrypted_flag)
+            new_node = PlanNode.fromVector(matrix_id, row_id, matrixA.shape[1], 0, self.element_mem_size, encrypted_flag)
+            self.vector_nodes_list.append(new_node)
             self.root_nodes.append(new_node)        # each root node represents a row vector
         # self.encrypted_flag = encrypted_flag
         self.vector_size = matrixA.shape[1]
@@ -87,15 +89,15 @@ class BatchPlan(object):
         other_BatchPlans = []
         for (matrixB, encrypted_flag) in zip(matrix_list, encrypted_flag_list):
             if isinstance(matrixB, np.ndarray):
-                BatchPlanB = BatchPlan()
+                BatchPlanB = BatchPlan(self.data_storage, vector_mem_size=self.vector_mem_size, element_mem_size=self.element_mem_size)
                 BatchPlanB.fromMatrix(matrixB, encrypted_flag)
-            elif isinstance(matrixB, BatchPlan):
-                BatchPlanB = matrixB
             else:
-                raise NotImplementedError("Input of matrixAdd should be ndarray or BatchPlan")
+                raise NotImplementedError("Input of matrixAdd should be ndarray")
             # check shape
             if self.matrix_shape != BatchPlanB.matrix_shape:
                 raise NotImplementedError("Input shapes are different!")
+            '''Merge two BatchPlans'''
+            self.vector_nodes_list += BatchPlanB.vector_nodes_list
             other_BatchPlans.append(BatchPlanB)
 
         # Construct computational relationships
@@ -103,14 +105,15 @@ class BatchPlan(object):
             new_opera_node = PlanNode.fromOperator("ADD")
             new_opera_node.addChild(self.root_nodes[row_id])       # add one row vector of self as a child of new operator
             new_opera_node.shape = self.root_nodes[row_id].shape   # add operation does not change shape
-            max_bit_list = [self.root_nodes[row_id].max_element_size]
+            max_bit_list = [self.root_nodes[row_id].max_slot_size]
             for iter_plan in other_BatchPlans:
-                if iter_plan.encrypted_flag:
-                    self.encrypted_flag = True
+                # if iter_plan.encrypted_flag:
+                #     self.encrypted_flag = True
                 new_opera_node.addChild(iter_plan.root_nodes[row_id])
-                max_bit_list.append(iter_plan.root_nodes[row_id].max_element_size)
-            new_opera_node.max_element_size = max(max_bit_list) + len(max_bit_list) - 1
+                max_bit_list.append(iter_plan.root_nodes[row_id].max_slot_size)
+            new_opera_node.max_slot_size = max(max_bit_list) + len(max_bit_list) - 1     # update the current max slot bits
             self.root_nodes[row_id] = new_opera_node    # replace root node
+        self.opera_nodes_list.append(self.root_nodes)   # record the operation level
 
     def matrixMul(self, matrix_list:list):
         '''
@@ -123,7 +126,7 @@ class BatchPlan(object):
         last_output_shape = self.matrix_shape   # use to check input shape
         for matrixB in matrix_list:
             if isinstance(matrixB, np.ndarray):
-                BatchPlanB = BatchPlan()
+                BatchPlanB = BatchPlan(self.data_storage, vector_mem_size=self.vector_mem_size, element_mem_size=self.element_mem_size)
                 BatchPlanB.fromMatrix(matrixB.T)    # transform col vector to row vector
             else:
                 raise TypeError("Input of matrixAdd should be ndarray!")
@@ -141,16 +144,17 @@ class BatchPlan(object):
                     new_mul_operator = PlanNode.fromOperator("MUL")     # each MUl operator just output 1 element
                     new_mul_operator.addChild(copy.deepcopy(self.root_nodes[row_id]))   
                     new_mul_operator.addChild(copy.deepcopy(BatchPlanB.root_nodes[col_id]))
-                    new_mul_operator.max_element_size = self.root_nodes[row_id].max_element_size + BatchPlanB.root_nodes[col_id].max_element_size   # Adds in MUL matrix operation are ignored
+                    new_mul_operator.max_slot_size = self.root_nodes[row_id].max_slot_size + BatchPlanB.root_nodes[col_id].max_slot_size   # Adds in MUL matrix operation are ignored
                     new_mul_operator.shape = (1,1)
                     new_merge_node.addChild(new_mul_operator)           # using merge operator splice elements from MUL operators
-                    if new_merge_node.max_element_size < new_mul_operator.max_element_size:
-                        new_merge_node.max_element_size = new_mul_operator.max_element_size
+                    if new_merge_node.max_slot_size < new_mul_operator.max_slot_size:
+                        new_merge_node.max_slot_size = new_mul_operator.max_slot_size
                 new_merge_node.shape = (1, BatchPlanB.matrix_shape[0])
                 self.root_nodes[row_id] = new_merge_node
 
             # modify current batch plan shape
             self.matrix_shape = (self.matrix_shape[0], BatchPlanB.matrix_shape[0])
+        
 
     def weave(self):
         '''
@@ -158,7 +162,7 @@ class BatchPlan(object):
         '''
         new_root_nodes = []
         for root in self.root_nodes:
-            max_element_num = int(self.vector_mem_size / root.max_element_size)     # max element num in one vector
+            max_element_num = int(self.vector_mem_size / root.max_slot_size)     # max element num in one vector
             if self.vector_size > max_element_num:
                 split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
                 tail_zero_num = split_num * max_element_num - self.vector_size
@@ -166,6 +170,26 @@ class BatchPlan(object):
             else:
                 new_root_nodes.append(root)
         self.root_nodes = new_root_nodes
+
+    def assignVector(self):
+        '''Assign vector data to vector nodes'''
+        for vec_node in self.vector_nodes_list:
+            batch_data = self.data_storage.getDataFromIdx(vec_node.getDataIdx())
+            vec_node.setBatchData(batch_data)
+
+    def serialExec(self):
+        '''Serial execution'''
+        self.assignVector()
+        outputs = []
+        # Execute from operation level 0 
+        for nodes_in_level in self.opera_nodes_list:
+            for node in nodes_in_level:
+                node.execNode()
+        for root in self.root_nodes:
+            outputs.append(root.batch_data)
+        return outputs
+
+            
 
     def printBatchPlan(self):
         '''Use to debug'''

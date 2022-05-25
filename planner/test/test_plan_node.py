@@ -1,39 +1,45 @@
 import sys, math
 sys.path.append("..")
+sys.path.append("../..")
 from plan_node import PlanNode
 from batch_plan import BatchPlan
+from storage.data_store import DataStorage
 
 import numpy as np
 
 def init_batch_plan_from_matrix():
-    myBatchPlan = BatchPlan(1024)
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
     matrixA = np.random.rand(4,3)
     print(matrixA)
-    myBatchPlan.fromMatrix(matrixA)
+    myBatchPlan.fromMatrix(matrixA, True)
     print("matrix shape: " + str(myBatchPlan.matrix_shape))
+    print("BatchPlan typology: ")
+    myBatchPlan.printBatchPlan()
+    myBatchPlan.assignVector()
     print("each root node:")
     for root in myBatchPlan.root_nodes:
         print("batch data: " + str(root.getBatchData()))
         print("batch shape: " + str(root.getShape()))
 
 def matrix_add():
-    MyBatchPlan_1 = BatchPlan(1024)
-    MyBatchPlan_2 = BatchPlan(1024)
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
     matrix_list = []
-    for i in range(5):
+    for i in range(4):
         matrix_list.append(np.random.rand(4,3))
     print("\n-------------------Input Matrix: -------------------")
     for matrix in matrix_list:
         print(matrix)
-    MyBatchPlan_1.fromMatrix(matrix_list[0], False)
-    MyBatchPlan_2.fromMatrix(matrix_list[2], False)
-    MyBatchPlan_1.matrixAdd([matrix_list[1]], [False])
-    MyBatchPlan_2.matrixAdd([matrix_list[3], matrix_list[4]], [False, False])
-    MyBatchPlan_1.matrixAdd([MyBatchPlan_2], [None])
+    myBatchPlan.fromMatrix(matrix_list[0], True)
+    myBatchPlan.matrixAdd([matrix_list[1], matrix_list[2]], [False, False])
+    myBatchPlan.matrixAdd([matrix_list[3]], [False])
+    print("BatchPlan typology")
+    myBatchPlan.printBatchPlan()
     print("\n-------------------Begin to exec Batch Plan.-------------------")
-    outputs = MyBatchPlan_1.execBatchPlan()
-    row_num, col_num = MyBatchPlan_1.matrix_shape
-    output_matrix = np.zeros(MyBatchPlan_1.matrix_shape)
+    outputs = myBatchPlan.serialExec()
+    row_num, col_num = myBatchPlan.matrix_shape
+    output_matrix = np.zeros(myBatchPlan.matrix_shape)
     for row_id in range(row_num):
         output_matrix[row_id, :] = outputs[row_id]
     print("\n-------------------Batch Plan output:-------------------")
@@ -134,5 +140,5 @@ def weaver():
         print("\n-------------------Test Fail-------------------")
         print(output_matrix == result)
 
-weaver()
+matrix_add()
 

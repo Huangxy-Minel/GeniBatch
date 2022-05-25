@@ -29,18 +29,15 @@ class PlanNode(object):
         self.encrypted_flag = encrypted_flag             # represents if batch_data is encrypted or not. default: false
 
     @staticmethod
-    def fromVector(matrix_id, vector_type:bool, vector_id, vector_len, slot_start_idx, slot_mem, encrypted_flag:bool):
+    def fromVector(matrix_id, vector_id, vector_len, slot_start_idx, slot_mem, encrypted_flag:bool):
         '''
-        Create a node from a vector but do not set the batch data
+        Create a node from a vector but do not set the batch data. Only allow the row vector
         Input:
 
         '''
         new_node = PlanNode(max_slot_size=slot_mem, encrypted_flag=encrypted_flag)
-        new_node.data_idx = (matrix_id, vector_type, vector_id, vector_len)
-        if vector_type:
-            new_node.shape = (vector_len, 1)
-        else:
-            new_node.shape = (1, vector_len)
+        new_node.data_idx = (matrix_id, vector_id, slot_start_idx, vector_len)
+        new_node.shape = (1, vector_len)
         new_node.encrypted_flag = encrypted_flag
         return new_node
 
@@ -54,13 +51,22 @@ class PlanNode(object):
         return new_node
 
     def getBatchData(self):
+        if self.state == 0:
+            raise NotImplementedError("Current node has not gotten the batch data, please check the execution logic or data assignment process!")
         return self.batch_data
+
+    def getDataIdx(self):
+        return self.data_idx
 
     def getShape(self):
         return self.shape
 
     def getVectorLen(self):
         return self.shape[1]
+
+    def setBatchData(self, data):
+        self.batch_data = data
+        self.state = 1
 
     def changeParent(self, parent_node):
         '''
