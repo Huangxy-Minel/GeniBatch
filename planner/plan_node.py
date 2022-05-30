@@ -21,7 +21,7 @@ class PlanNode(object):
         self.max_slot_size = max_slot_size          # represent max memory bits of each slot
         self.shape = (0,0)
         '''Tree'''
-        self.parent = None           # The parent node, for root node, parent = None
+        self.parent = []             # The parent node, for root node, parent = []
         self.children = []           # A list of children
         self.size = 0                # children num
         '''Node attributes'''
@@ -84,9 +84,7 @@ class PlanNode(object):
         Input:
             parent_node: class PlanNode
         '''
-        if self.parent != None:
-            raise NotImplementedError("Current node is not root, all operations should at root node!")
-        self.parent = parent_node
+        self.parent.append(parent_node)
     
     def addChild(self, child_node):
         '''
@@ -95,7 +93,7 @@ class PlanNode(object):
             child_node: class PlanNode
         Note: Only operation node can add a child
         '''
-        if self.parent != None:
+        if self.parent != []:
             raise NotImplementedError("Current node is not root, all operations should at root node!")
         if self.operator == None:
             raise NotImplementedError("Only operation node can add a child!")
@@ -219,3 +217,25 @@ class PlanNode(object):
                 raise NotImplementedError("Invalid operator node!")
             self.state = 1              # change state
             return self.batch_data
+
+    def serialExec(self):
+        '''
+        Execute node only base on its children, not recursively
+        '''
+        if self.operator == "ADD":
+            self.batch_data = copy.deepcopy(self.children[0].getBatchData())
+            for i in range(1, self.size):
+                self.batch_data = self.batch_data + self.children[i].getBatchData()
+        elif self.operator == "MUL":
+            self.batch_data = copy.deepcopy(self.children[0].getBatchData())
+            for i in range(1, self.size):
+                self.batch_data = self.batch_data * self.children[i].getBatchData()
+                self.batch_data = self.batch_data.sum()
+        elif self.operator == "Merge":
+            self.batch_data = np.zeros(self.shape)
+            for i in range(0, self.size):
+                self.batch_data[0][i] = self.children[i].getBatchData()
+        else: 
+            raise NotImplementedError("Invalid operator node!")
+        self.state = 1
+        return self.batch_data

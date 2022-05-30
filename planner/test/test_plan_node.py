@@ -57,21 +57,20 @@ def matrix_add():
         print(output_matrix == result)
 
 def matrix_mul():
-    myBatchPlan = BatchPlan(1024)
-    matrixA = np.random.rand(4,3)
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
+    matrixA = np.random.rand(1, 10000)
     print("\n-------------------Matrix A: -------------------")
     print(matrixA)
-    matrixB = np.random.rand(3,4)
+    matrixB = np.random.rand(10000,20)
     print("\n-------------------Matrix B: -------------------")
     print(matrixB)
-    matrixC = np.random.rand(4,5)
-    print("\n-------------------Matrix B: -------------------")
-    print(matrixC)
     myBatchPlan.fromMatrix(matrixA, True)
-    myBatchPlan.matrixMul([matrixB, matrixC])
-    print(myBatchPlan.encrypted_flag)
+    myBatchPlan.matrixMul([matrixB])
+    print("BatchPlan typology")
+    myBatchPlan.printBatchPlan()
     print("\n-------------------Begin to exec Batch Plan.-------------------")
-    outputs = myBatchPlan.execBatchPlan()
+    outputs = myBatchPlan.serialExec()
     row_num, col_num = myBatchPlan.matrix_shape
     output_matrix = np.zeros(myBatchPlan.matrix_shape)
     for row_id in range(row_num):
@@ -80,7 +79,6 @@ def matrix_mul():
     print(output_matrix)
     print("\n-------------------Numpy output:-------------------")
     result = matrixA.dot(matrixB)
-    result = result.dot(matrixC)
     print(result)
 
     if np.allclose(output_matrix, result):
@@ -90,55 +88,56 @@ def matrix_mul():
         print(output_matrix == result)
 
 def weaver():
-    myBatchPlan = BatchPlan(1024)
-    matrixA = np.ones([1, 100], dtype=np.uint32) * 4294967295
-    matrixB = np.random.randint(15, size=(1,100))
-    matrixC = np.random.randint(15, size=(100,2))
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
+    matrixA = np.random.randint(63, size=(1,100))
+    matrixB = np.random.randint(63, size=(1,100))
+    matrixC = np.random.randint(63, size=(100,2))
 
 
     print("\n-------------------Test Report:-------------------")
     myBatchPlan.fromMatrix(matrixA, True)
-    print("In matrixA, max_element_size of each vector is:", end=" ")
+    print("In matrixA, max_slot_size of each vector is:", end=" ")
     for root in myBatchPlan.root_nodes:
-        print(root.max_element_size, end=" ")
+        print(root.max_slot_size, end=" ")
     myBatchPlan.matrixAdd([matrixB], [False])
-    print("\nAfter adding matrixB, max_element_size of each vector is:", end=" ")
+    print("\nAfter adding matrixB, max_slot_size of each vector is:", end=" ")
     for root in myBatchPlan.root_nodes:
-        print(root.max_element_size, end=" ")
+        print(root.max_slot_size, end=" ")
     myBatchPlan.matrixMul([matrixC])
-    print("\nAfter timing matrixC, max_element_size of each vector is:", end=" ")
+    print("\nAfter timing matrixC, max_slot_size of each vector is:", end=" ")
     for root in myBatchPlan.root_nodes:
-        print(root.max_element_size, end=" ")
+        print(root.max_slot_size, end=" ")
     print("\n")
     idx = 0
     for root in myBatchPlan.root_nodes:
-        vector_size = int(myBatchPlan.vector_mem_size / root.max_element_size)
+        vector_size = int(myBatchPlan.vector_mem_size / root.max_slot_size)
         print("Maximum compression rate in vector " + str(idx) + " is: " + str(vector_size))
         idx += 1
     print("\n-------------------Batch Plan before weave:-------------------")
     myBatchPlan.printBatchPlan()
     print("\n-------------------Batch Plan after weave:-------------------")
-    myBatchPlan.weave()
-    myBatchPlan.printBatchPlan()
+    # myBatchPlan.weave()
+    # myBatchPlan.printBatchPlan()
 
-    print("\n-------------------Begin to exec Batch Plan.-------------------")
-    outputs = myBatchPlan.execBatchPlan()
-    row_num, col_num = myBatchPlan.matrix_shape
-    output_matrix = np.zeros(myBatchPlan.matrix_shape)
-    for row_id in range(row_num):
-        output_matrix[row_id, :] = outputs[row_id]
-    print("\n-------------------Batch Plan output:-------------------")
-    print(output_matrix)
-    print("\n-------------------Numpy output:-------------------")
-    result = matrixA + matrixB
-    result = result.dot(matrixC)
-    print("\n-------------------Numpy output:-------------------")
-    print(result)
-    if np.allclose(output_matrix, result):
-        print("\n-------------------Test Pass!-------------------")
-    else:
-        print("\n-------------------Test Fail-------------------")
-        print(output_matrix == result)
+    # print("\n-------------------Begin to exec Batch Plan.-------------------")
+    # outputs = myBatchPlan.execBatchPlan()
+    # row_num, col_num = myBatchPlan.matrix_shape
+    # output_matrix = np.zeros(myBatchPlan.matrix_shape)
+    # for row_id in range(row_num):
+    #     output_matrix[row_id, :] = outputs[row_id]
+    # print("\n-------------------Batch Plan output:-------------------")
+    # print(output_matrix)
+    # print("\n-------------------Numpy output:-------------------")
+    # result = matrixA + matrixB
+    # result = result.dot(matrixC)
+    # print("\n-------------------Numpy output:-------------------")
+    # print(result)
+    # if np.allclose(output_matrix, result):
+    #     print("\n-------------------Test Pass!-------------------")
+    # else:
+    #     print("\n-------------------Test Fail-------------------")
+    #     print(output_matrix == result)
 
-matrix_add()
+weaver()
 

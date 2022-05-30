@@ -101,6 +101,7 @@ class BatchPlan(object):
             other_BatchPlans.append(BatchPlanB)
 
         # Construct computational relationships
+        add_nodes_list = []
         for row_id in range(self.matrix_shape[0]):
             new_opera_node = PlanNode.fromOperator("ADD")
             new_opera_node.addChild(self.root_nodes[row_id])       # add one row vector of self as a child of new operator
@@ -112,14 +113,15 @@ class BatchPlan(object):
                 new_opera_node.addChild(iter_plan.root_nodes[row_id])
                 max_bit_list.append(iter_plan.root_nodes[row_id].max_slot_size)
             new_opera_node.max_slot_size = max(max_bit_list) + len(max_bit_list) - 1     # update the current max slot bits
+            add_nodes_list.append(new_opera_node)
             self.root_nodes[row_id] = new_opera_node    # replace root node
-        self.opera_nodes_list.append(self.root_nodes)   # record the operation level
+        self.opera_nodes_list.append(add_nodes_list)   # record the operation level
 
     def matrixMul(self, matrix_list:list):
         '''
         Primitive for user: Matrix Mul
         Input: matrix_list: list of np.ndarray
-        Note: matrix in matrix_list must be unenrypted
+        Note: matrix in matrix_list must be unenrypted, the encrypted matrix can multiple for only once
         '''
         # check inputs
         other_BatchPlans = []
@@ -133,27 +135,35 @@ class BatchPlan(object):
             # check shape
             if last_output_shape[1] != BatchPlanB.matrix_shape[1]:
                 raise NotImplementedError("Input shapes are different!")
+            '''Merge two BatchPlans'''
+            self.vector_nodes_list += BatchPlanB.vector_nodes_list
             other_BatchPlans.append(BatchPlanB)
             last_output_shape = (last_output_shape[0], BatchPlanB.matrix_shape[0])
         
         for BatchPlanB in other_BatchPlans:
+            mul_nodes_list = []
+            merge_nodes_list = []
             # Construct computational relationships
             for row_id in range(self.matrix_shape[0]):
                 new_merge_node = PlanNode.fromOperator("Merge")
                 for col_id in range(BatchPlanB.matrix_shape[0]):           # for each row vector of self, it should be times for col_num of matrixB
                     new_mul_operator = PlanNode.fromOperator("MUL")     # each MUl operator just output 1 element
-                    new_mul_operator.addChild(copy.deepcopy(self.root_nodes[row_id]))   
-                    new_mul_operator.addChild(copy.deepcopy(BatchPlanB.root_nodes[col_id]))
+                    new_mul_operator.addChild(self.root_nodes[row_id])   
+                    new_mul_operator.addChild(BatchPlanB.root_nodes[col_id])
                     new_mul_operator.max_slot_size = self.root_nodes[row_id].max_slot_size + BatchPlanB.root_nodes[col_id].max_slot_size   # Adds in MUL matrix operation are ignored
                     new_mul_operator.shape = (1,1)
                     new_merge_node.addChild(new_mul_operator)           # using merge operator splice elements from MUL operators
                     if new_merge_node.max_slot_size < new_mul_operator.max_slot_size:
                         new_merge_node.max_slot_size = new_mul_operator.max_slot_size
+                    mul_nodes_list.append(new_mul_operator)
                 new_merge_node.shape = (1, BatchPlanB.matrix_shape[0])
+                merge_nodes_list.append(new_merge_node)
                 self.root_nodes[row_id] = new_merge_node
 
             # modify current batch plan shape
             self.matrix_shape = (self.matrix_shape[0], BatchPlanB.matrix_shape[0])
+        self.opera_nodes_list.append(mul_nodes_list)
+        self.opera_nodes_list.append(merge_nodes_list)
         
 
     def weave(self):
@@ -184,12 +194,10 @@ class BatchPlan(object):
         # Execute from operation level 0 
         for nodes_in_level in self.opera_nodes_list:
             for node in nodes_in_level:
-                node.execNode()
+                node.serialExec()
         for root in self.root_nodes:
             outputs.append(root.batch_data)
         return outputs
-
-            
 
     def printBatchPlan(self):
         '''Use to debug'''
