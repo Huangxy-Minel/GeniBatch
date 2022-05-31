@@ -90,9 +90,9 @@ def matrix_mul():
 def weaver():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
-    matrixA = np.random.randint(63, size=(1,100))
-    matrixB = np.random.randint(63, size=(1,100))
-    matrixC = np.random.randint(63, size=(100,2))
+    matrixA = np.random.randint(63, size=(1,8))
+    matrixB = np.random.randint(63, size=(1,8))
+    matrixC = np.random.randint(63, size=(8,2))
 
 
     print("\n-------------------Test Report:-------------------")
@@ -117,27 +117,27 @@ def weaver():
     print("\n-------------------Batch Plan before weave:-------------------")
     myBatchPlan.printBatchPlan()
     print("\n-------------------Batch Plan after weave:-------------------")
-    # myBatchPlan.weave()
-    # myBatchPlan.printBatchPlan()
+    myBatchPlan.weave()
+    myBatchPlan.printBatchPlan()
 
-    # print("\n-------------------Begin to exec Batch Plan.-------------------")
-    # outputs = myBatchPlan.execBatchPlan()
-    # row_num, col_num = myBatchPlan.matrix_shape
-    # output_matrix = np.zeros(myBatchPlan.matrix_shape)
-    # for row_id in range(row_num):
-    #     output_matrix[row_id, :] = outputs[row_id]
-    # print("\n-------------------Batch Plan output:-------------------")
-    # print(output_matrix)
-    # print("\n-------------------Numpy output:-------------------")
-    # result = matrixA + matrixB
-    # result = result.dot(matrixC)
-    # print("\n-------------------Numpy output:-------------------")
-    # print(result)
-    # if np.allclose(output_matrix, result):
-    #     print("\n-------------------Test Pass!-------------------")
-    # else:
-    #     print("\n-------------------Test Fail-------------------")
-    #     print(output_matrix == result)
+    print("\n-------------------Begin to exec Batch Plan.-------------------")
+    outputs = myBatchPlan.serialExec()
+    row_num, col_num = myBatchPlan.matrix_shape
+    output_matrix = np.zeros(myBatchPlan.matrix_shape)
+    for row_id in range(row_num):
+        output_matrix[row_id, :] = outputs[row_id]
+    print("\n-------------------Batch Plan output:-------------------")
+    print(output_matrix)
+    print("\n-------------------Numpy output:-------------------")
+    result = matrixA + matrixB
+    result = result.dot(matrixC)
+    print("\n-------------------Numpy output:-------------------")
+    print(result)
+    if np.allclose(output_matrix, result):
+        print("\n-------------------Test Pass!-------------------")
+    else:
+        print("\n-------------------Test Fail-------------------")
+        print(output_matrix == result)
 
 weaver()
 

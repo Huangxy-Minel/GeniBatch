@@ -19,4 +19,8 @@ class DataStorage(object):
                 data_idx: 4 tuples, (matrix_id, row_id, slot_start_idx, vector_len)
         '''
         matrix_id, row_id, slot_start_idx, vector_len = data_idx
-        return self.data_store[matrix_id][row_id][slot_start_idx:slot_start_idx+vector_len]
+        residual_vector_len = len(self.data_store[matrix_id][row_id]) - slot_start_idx
+        if residual_vector_len < vector_len:
+            return self.data_store[matrix_id][row_id][slot_start_idx:slot_start_idx+residual_vector_len] + np.zeros((1, vector_len - residual_vector_len))
+        else:
+            return self.data_store[matrix_id][row_id][slot_start_idx:slot_start_idx+vector_len]

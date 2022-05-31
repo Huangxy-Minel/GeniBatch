@@ -20,8 +20,8 @@ class PlanNode(object):
         '''Vector properties'''
         self.max_slot_size = max_slot_size          # represent max memory bits of each slot
         self.shape = (0,0)
-        '''Tree'''
-        self.parent = []             # The parent node, for root node, parent = []
+        '''DAG Graph'''
+        # self.parent = []             # The parent node, for root node, parent = []
         self.children = []           # A list of children
         self.size = 0                # children num
         '''Node attributes'''
@@ -68,23 +68,23 @@ class PlanNode(object):
         self.batch_data = data
         self.state = 1
 
-    def changeParent(self, parent_node):
-        '''
-        Change current parent for this node
-        Input:
-            parent_node: class PlanNode
-        '''
-        if self.parent == None:
-            raise NotImplementedError("Current node is root, do not call this function!")
-        self.parent = parent_node
+    # def changeParent(self, parent_node):
+    #     '''
+    #     Change current parent for this node
+    #     Input:
+    #         parent_node: class PlanNode
+    #     '''
+    #     if self.parent == None:
+    #         raise NotImplementedError("Current node is root, do not call this function!")
+    #     self.parent = parent_node
 
-    def addParent(self, parent_node):
-        '''
-        Add a parent for current root node in Batch Plan
-        Input:
-            parent_node: class PlanNode
-        '''
-        self.parent.append(parent_node)
+    # def addParent(self, parent_node):
+    #     '''
+    #     Add a parent for current root node in Batch Plan
+    #     Input:
+    #         parent_node: class PlanNode
+    #     '''
+    #     self.parent.append(parent_node)
     
     def addChild(self, child_node):
         '''
@@ -93,12 +93,12 @@ class PlanNode(object):
             child_node: class PlanNode
         Note: Only operation node can add a child
         '''
-        if self.parent != []:
-            raise NotImplementedError("Current node is not root, all operations should at root node!")
+        # if self.parent != []:
+        #     raise NotImplementedError("Current node is not root, all operations should at root node!")
         if self.operator == None:
             raise NotImplementedError("Only operation node can add a child!")
         self.children.append(child_node)
-        child_node.addParent(self)
+        # child_node.addParent(self)
         if child_node.encrypted_flag:
             self.encrypted_flag = True      # For any operations, if one child is encrypted, the output of this operation node must be encrypted
         self.size += 1
@@ -118,7 +118,7 @@ class PlanNode(object):
             return False
 
     
-    def splitTree(self, max_element_num, split_num, tail_zero_num):
+    def splitTree(self, max_element_num, split_num, tail_zero_num, merge_nodes):
         '''
         Split CompTree, make sure vector size of each node is smaller than max_element_num
         Properties:
@@ -131,60 +131,57 @@ class PlanNode(object):
         Return:
             list of PlanNode, represents several CompTree
         '''
-        self.recursionMakeUpZeros(tail_zero_num)
-        '''Find Merge node'''
-        merge_nodes = []        # store merge node
-        node_in_level = [self]
-        while len(node_in_level) > 0:
-            next_level = []
-            for node in node_in_level:
-                if node.operator == "Merge":
-                    merge_nodes.append(node)
-                else:
-                    next_level.extend(node.children)
-            node_in_level = next_level
+        # self.recursionMakeUpZeros(tail_zero_num)
         '''Split node start at Merge node'''
+        vectors_list = []
         for merge_node in merge_nodes:
             '''delete mul node from merge node firstly'''
             mul_nodes = []
             for mul_node in merge_node.children:
-                mul_node.parent = None
                 mul_nodes.append(mul_node)
             merge_node.children = []
             merge_node.size = 0
+            '''
+            Insight: Mul nodes of a fixed Merge node share the same row vector
+            Therefore, split the row vector only once
+            '''
+            element_idx = 0         # means all vectors start 
             for mul_node in mul_nodes:
                 '''start to split'''
                 new_add_node = PlanNode.fromOperator("ADD")     # One MUL will split to one ADD and multi-MUL
                 new_add_node.shape = (1,1)
-                element_idx = 0
                 for i in range(split_num):
                     new_mul_node = copy.deepcopy(mul_node)
                     for child in new_mul_node.children:
-                        child.recursionUpdate(max_element_num, element_idx)
+                        child.recursionUpdate(max_element_num, element_idx, vectors_list)
                     new_add_node.addChild(new_mul_node)
                     element_idx += max_element_num
                 merge_node.addChild(new_add_node)
-        return [self]
+        return [self], vectors_list
 
-    def recursionMakeUpZeros(self, tail_zero_num):
-        if self.operator == None:   # vector node
-            self.batch_data = np.hstack((self.batch_data, np.zeros((1, tail_zero_num))))
-        else:
-            for child in self.children:
-                child.recursionMakeUpZeros(tail_zero_num)
+    # def recursionMakeUpZeros(self, tail_zero_num):
+    #     if self.operator == None:   # vector node
+    #         self.batch_data = np.hstack((self.batch_data, np.zeros((1, tail_zero_num))))
+    #     else:
+    #         for child in self.children:
+    #             child.recursionMakeUpZeros(tail_zero_num)
 
 
-    def recursionUpdate(self, max_element_num, element_idx):
+    def recursionUpdate(self, max_element_num, element_idx, vectors_list):
         if self.operator == None:   # vector node
             self.shape = (1, max_element_num)
-            self.batch_data = self.batch_data[element_idx : element_idx + max_element_num - 1]
+            matrix_id, vector_id = self.data_idx[0], self.data_idx[1]
+            self.data_idx = (matrix_id, vector_id, element_idx, max_element_num)
+            vectors_list.append(self)
+            print(self)
+            # self.batch_data = self.batch_data[element_idx : element_idx + max_element_num - 1]
         else:   # operator node
             if self.operator == "ADD":
                 self.shape = (1, max_element_num)
             else:
                 raise NotImplementedError("recursionUpdate should only be called at ADD or Vector!")
             for child in self.children:
-                child.recursionUpdate(max_element_num, element_idx)
+                child.recursionUpdate(max_element_num, element_idx, vectors_list)
 
     def printNode(self):
         '''Use to debug'''

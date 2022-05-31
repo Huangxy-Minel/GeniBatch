@@ -12,6 +12,14 @@ class BatchPlan(object):
     1. Update the data storage and interfaces
     2. Update data struture to support parallel execution
 
+    Note: 
+    1. Make sure the encryption multiplication only occurs once
+    Exp:
+        Target: ([A]*B+[C]) * D; [·] means homomorphic encryption
+        Correct usage: [A]*(B*D) + [C]*D
+    -------------------------------------------------------------
+    Description in version 1.1:
+
     Describe the computational typology.
     Provide common encrypted matrix operator such as Add and Multiplication.
     Create before calculation and lazy operate.
@@ -51,6 +59,8 @@ class BatchPlan(object):
         self.vector_mem_size = vector_mem_size      # represents memory size of each vector. default: 1024bits
         self.element_mem_size = element_mem_size    # the memory size of one slot number
         self.vector_size = 0                        # num of elements in each node
+        self.mul_flag = False
+        self.merge_nodes = []
         '''Use for data storage'''
         self.data_storage = data_storage
 
@@ -164,6 +174,8 @@ class BatchPlan(object):
             self.matrix_shape = (self.matrix_shape[0], BatchPlanB.matrix_shape[0])
         self.opera_nodes_list.append(mul_nodes_list)
         self.opera_nodes_list.append(merge_nodes_list)
+        self.merge_nodes = merge_nodes_list
+        self.mul_flag = True
         
 
     def weave(self):
@@ -174,9 +186,15 @@ class BatchPlan(object):
         for root in self.root_nodes:
             max_element_num = int(self.vector_mem_size / root.max_slot_size)     # max element num in one vector
             if self.vector_size > max_element_num:
+                # re-calculate slot memory
+                if self.mul_flag and max_element_num != int(self.vector_mem_size / (root.max_slot_size + max_element_num)):
+                    max_element_num -= 1
                 split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
                 tail_zero_num = split_num * max_element_num - self.vector_size
-                new_root_nodes.extend(root.splitTree(max_element_num, split_num, tail_zero_num))
+                root.max_slot_size += max_element_num
+                new_root_node, new_vector_list = root.splitTree(max_element_num, split_num, tail_zero_num, self.merge_nodes)
+                new_root_nodes.extend(new_root_node)
+                self.vector_nodes_list.extend(new_vector_list)
             else:
                 new_root_nodes.append(root)
         self.root_nodes = new_root_nodes
@@ -184,6 +202,7 @@ class BatchPlan(object):
     def assignVector(self):
         '''Assign vector data to vector nodes'''
         for vec_node in self.vector_nodes_list:
+            print(vec_node)
             batch_data = self.data_storage.getDataFromIdx(vec_node.getDataIdx())
             vec_node.setBatchData(batch_data)
 
@@ -198,6 +217,14 @@ class BatchPlan(object):
         for root in self.root_nodes:
             outputs.append(root.batch_data)
         return outputs
+
+    # def parallelExec(self):
+    #     '''Parallel execution'''
+
+    # def parallelExecOneLevel(self, opera_nodes_list):
+    #     nodes_type = opera_nodes_list[0].operator
+    #     if nodes_type == "ADD":
+
 
     def printBatchPlan(self):
         '''Use to debug'''
