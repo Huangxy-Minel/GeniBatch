@@ -90,9 +90,12 @@ def matrix_mul():
 def weaver():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
-    matrixA = np.random.randint(63, size=(1,8))
-    matrixB = np.random.randint(63, size=(1,8))
-    matrixC = np.random.randint(63, size=(8,2))
+    # matrixA = np.random.randint(63, size=(1,8))
+    # matrixB = np.random.randint(63, size=(1,8))
+    # matrixC = np.random.randint(63, size=(8,2))
+    matrixA = np.random.rand(1, 10000)
+    matrixB = np.random.rand(1, 10000)
+    matrixC = np.random.rand(10000, 20)
 
 
     print("\n-------------------Test Report:-------------------")
@@ -118,9 +121,10 @@ def weaver():
     myBatchPlan.printBatchPlan()
     print("\n-------------------Batch Plan after weave:-------------------")
     myBatchPlan.weave()
-    myBatchPlan.printBatchPlan()
+    # myBatchPlan.printBatchPlan()
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")
+    # print(matrixC)
     outputs = myBatchPlan.serialExec()
     row_num, col_num = myBatchPlan.matrix_shape
     output_matrix = np.zeros(myBatchPlan.matrix_shape)

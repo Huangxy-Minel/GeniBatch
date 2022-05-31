@@ -11,6 +11,7 @@ class BatchPlan(object):
     Update:
     1. Update the data storage and interfaces
     2. Update data struture to support parallel execution
+    3. Update computation typology to DAG
 
     Note: 
     1. Make sure the encryption multiplication only occurs once
@@ -80,7 +81,7 @@ class BatchPlan(object):
         for row_id in range(matrixA.shape[0]):
             '''Create a vector node'''     
             new_node = PlanNode.fromVector(matrix_id, row_id, matrixA.shape[1], 0, self.element_mem_size, encrypted_flag)
-            self.vector_nodes_list.append(new_node)
+            # self.vector_nodes_list.append(new_node)
             self.root_nodes.append(new_node)        # each root node represents a row vector
         # self.encrypted_flag = encrypted_flag
         self.vector_size = matrixA.shape[1]
@@ -107,7 +108,7 @@ class BatchPlan(object):
             if self.matrix_shape != BatchPlanB.matrix_shape:
                 raise NotImplementedError("Input shapes are different!")
             '''Merge two BatchPlans'''
-            self.vector_nodes_list += BatchPlanB.vector_nodes_list
+            # self.vector_nodes_list += BatchPlanB.vector_nodes_list
             other_BatchPlans.append(BatchPlanB)
 
         # Construct computational relationships
@@ -125,7 +126,7 @@ class BatchPlan(object):
             new_opera_node.max_slot_size = max(max_bit_list) + len(max_bit_list) - 1     # update the current max slot bits
             add_nodes_list.append(new_opera_node)
             self.root_nodes[row_id] = new_opera_node    # replace root node
-        self.opera_nodes_list.append(add_nodes_list)   # record the operation level
+        # self.opera_nodes_list.append(add_nodes_list)   # record the operation level
 
     def matrixMul(self, matrix_list:list):
         '''
@@ -146,7 +147,7 @@ class BatchPlan(object):
             if last_output_shape[1] != BatchPlanB.matrix_shape[1]:
                 raise NotImplementedError("Input shapes are different!")
             '''Merge two BatchPlans'''
-            self.vector_nodes_list += BatchPlanB.vector_nodes_list
+            # self.vector_nodes_list += BatchPlanB.vector_nodes_list
             other_BatchPlans.append(BatchPlanB)
             last_output_shape = (last_output_shape[0], BatchPlanB.matrix_shape[0])
         
@@ -172,8 +173,8 @@ class BatchPlan(object):
 
             # modify current batch plan shape
             self.matrix_shape = (self.matrix_shape[0], BatchPlanB.matrix_shape[0])
-        self.opera_nodes_list.append(mul_nodes_list)
-        self.opera_nodes_list.append(merge_nodes_list)
+        # self.opera_nodes_list.append(mul_nodes_list)
+        # self.opera_nodes_list.append(merge_nodes_list)
         self.merge_nodes = merge_nodes_list
         self.mul_flag = True
         
@@ -181,33 +182,49 @@ class BatchPlan(object):
     def weave(self):
         '''
         Use to modify BatchPlan, make sure there is no overflow when executing.
+        Note:
+            Split nodes below Merge. Any nodes over Merge will not use batch-wise encryption
         '''
-        new_root_nodes = []
-        for root in self.root_nodes:
-            max_element_num = int(self.vector_mem_size / root.max_slot_size)     # max element num in one vector
+        for merge_node in self.merge_nodes:
+            max_element_num = int(self.vector_mem_size / merge_node.max_slot_size)     # max element num in one vector
             if self.vector_size > max_element_num:
                 # re-calculate slot memory
-                if self.mul_flag and max_element_num != int(self.vector_mem_size / (root.max_slot_size + max_element_num)):
+                if self.mul_flag and max_element_num != int(self.vector_mem_size / (merge_node.max_slot_size + max_element_num)):
                     max_element_num -= 1
                 split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
-                tail_zero_num = split_num * max_element_num - self.vector_size
-                root.max_slot_size += max_element_num
-                new_root_node, new_vector_list = root.splitTree(max_element_num, split_num, tail_zero_num, self.merge_nodes)
-                new_root_nodes.extend(new_root_node)
-                self.vector_nodes_list.extend(new_vector_list)
-            else:
-                new_root_nodes.append(root)
-        self.root_nodes = new_root_nodes
+                merge_node.max_slot_size += max_element_num
+                merge_node.splitTree(max_element_num, split_num)
+
+    def traverseDAG(self):
+        '''Update self.vector_nodes_list and self.opera_nodes_list'''
+        node_in_level = self.root_nodes
+        while len(node_in_level) > 0:
+            nodes_next_level = []
+            opera_nodes_list = []
+            for node in node_in_level:
+                if node.operator == None:   # vector data
+                    self.vector_nodes_list.append(node)
+                else:
+                    opera_nodes_list.append(node)   # operation node
+                for child in node.children:
+                    if child not in nodes_next_level:
+                        nodes_next_level.append(child)
+            if opera_nodes_list != []:
+                self.opera_nodes_list.insert(0, opera_nodes_list)
+            node_in_level = nodes_next_level
+
 
     def assignVector(self):
         '''Assign vector data to vector nodes'''
+        if self.vector_nodes_list == []:
+            raise NotImplementedError("Please update vector nodes list firstly!")
         for vec_node in self.vector_nodes_list:
-            print(vec_node)
             batch_data = self.data_storage.getDataFromIdx(vec_node.getDataIdx())
             vec_node.setBatchData(batch_data)
 
     def serialExec(self):
         '''Serial execution'''
+        self.traverseDAG()
         self.assignVector()
         outputs = []
         # Execute from operation level 0 
@@ -236,7 +253,8 @@ class BatchPlan(object):
             for root in node_in_level[level]:
                 root.printNode()
                 for child in root.children:
-                    nodes_next_level.append(child)
+                    if child not in nodes_next_level:
+                        nodes_next_level.append(child)
             node_in_level.append(nodes_next_level)
             print("\n")
             level += 1

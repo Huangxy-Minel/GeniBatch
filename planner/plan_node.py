@@ -4,6 +4,9 @@ import copy, math
 
 class PlanNode(object):
     '''
+    versionL 2.0
+    Note:
+        Upate the typology to DAG
     version: 1.1
     Node in the computational typology, which is called BatchPlan.
     Two types of Node: vector & operator
@@ -118,7 +121,7 @@ class PlanNode(object):
             return False
 
     
-    def splitTree(self, max_element_num, split_num, tail_zero_num, merge_nodes):
+    def splitTree(self, max_element_num, split_num):
         '''
         Split CompTree, make sure vector size of each node is smaller than max_element_num
         Properties:
@@ -126,38 +129,46 @@ class PlanNode(object):
             2. Only one level of sub-CompTree (root node is Merge Operator) contains MUL Operator
         For Merge Operator, keep same
         For MUL Operator, split to multi-MUL + one ADD
+        Call from a merge node
         Input:
             max_element_num: int
         Return:
             list of PlanNode, represents several CompTree
         '''
-        # self.recursionMakeUpZeros(tail_zero_num)
         '''Split node start at Merge node'''
-        vectors_list = []
-        for merge_node in merge_nodes:
-            '''delete mul node from merge node firstly'''
-            mul_nodes = []
-            for mul_node in merge_node.children:
-                mul_nodes.append(mul_node)
-            merge_node.children = []
-            merge_node.size = 0
-            '''
-            Insight: Mul nodes of a fixed Merge node share the same row vector
-            Therefore, split the row vector only once
-            '''
-            element_idx = 0         # means all vectors start 
+        '''delete mul nodes below merge node firstly'''
+        mul_nodes = []          # store the children (mul nodes) of the merge node
+        for mul_node in self.children:
+            mul_nodes.append(mul_node)
+        self.children = []
+        self.size = 0
+        '''
+        Insight: Mul nodes of a fixed Merge node share the same row vector
+        Therefore, split the row vector only once
+        '''
+        element_idx = 0         # means all vectors start at element_idx
+        for i in range(len(mul_nodes)):
+            new_add_node = PlanNode.fromOperator("ADD")     # One MUL will split to one ADD and multi-MUL
+            new_add_node.shape = (1,1)
+            self.addChild(new_add_node)
+        for i in range(split_num):
+            '''split row vector secondly'''
+            row_vec_node = copy.deepcopy(mul_nodes[0].children[0])
+            row_vec_node.recursionUpdate(max_element_num, element_idx)
+            '''split mul operators and modify typology thirdly'''
+            add_node_idx = 0
             for mul_node in mul_nodes:
-                '''start to split'''
-                new_add_node = PlanNode.fromOperator("ADD")     # One MUL will split to one ADD and multi-MUL
-                new_add_node.shape = (1,1)
-                for i in range(split_num):
-                    new_mul_node = copy.deepcopy(mul_node)
-                    for child in new_mul_node.children:
-                        child.recursionUpdate(max_element_num, element_idx, vectors_list)
-                    new_add_node.addChild(new_mul_node)
-                    element_idx += max_element_num
-                merge_node.addChild(new_add_node)
-        return [self], vectors_list
+                new_mul_node = PlanNode.fromOperator("MUL")
+                new_mul_node.shape = (1,1)
+                new_mul_node.addChild(row_vec_node)
+                for child_idx in range(1, mul_node.size):
+                    child = copy.deepcopy(mul_node.children[child_idx])        # get one child of original mul node. the child node must be vector node (col vector)
+                    child.recursionUpdate(max_element_num, element_idx)
+                    new_mul_node.addChild(child)
+                self.children[add_node_idx].addChild(new_mul_node)
+                add_node_idx += 1
+            element_idx += max_element_num      # update start idx
+
 
     # def recursionMakeUpZeros(self, tail_zero_num):
     #     if self.operator == None:   # vector node
@@ -167,13 +178,11 @@ class PlanNode(object):
     #             child.recursionMakeUpZeros(tail_zero_num)
 
 
-    def recursionUpdate(self, max_element_num, element_idx, vectors_list):
+    def recursionUpdate(self, max_element_num, element_idx):
         if self.operator == None:   # vector node
             self.shape = (1, max_element_num)
             matrix_id, vector_id = self.data_idx[0], self.data_idx[1]
             self.data_idx = (matrix_id, vector_id, element_idx, max_element_num)
-            vectors_list.append(self)
-            print(self)
             # self.batch_data = self.batch_data[element_idx : element_idx + max_element_num - 1]
         else:   # operator node
             if self.operator == "ADD":
@@ -181,7 +190,7 @@ class PlanNode(object):
             else:
                 raise NotImplementedError("recursionUpdate should only be called at ADD or Vector!")
             for child in self.children:
-                child.recursionUpdate(max_element_num, element_idx, vectors_list)
+                child.recursionUpdate(max_element_num, element_idx)
 
     def printNode(self):
         '''Use to debug'''
@@ -221,13 +230,20 @@ class PlanNode(object):
         '''
         if self.operator == "ADD":
             self.batch_data = copy.deepcopy(self.children[0].getBatchData())
+            # print("ADD inputs")
+            # print(self.children[0].getBatchData())
+            # print(self.children[1].getBatchData())
             for i in range(1, self.size):
                 self.batch_data = self.batch_data + self.children[i].getBatchData()
         elif self.operator == "MUL":
             self.batch_data = copy.deepcopy(self.children[0].getBatchData())
+            # print("MUL inputs")
+            # print(self.children[0].getBatchData())
+            # print(self.children[1].getBatchData())
             for i in range(1, self.size):
                 self.batch_data = self.batch_data * self.children[i].getBatchData()
                 self.batch_data = self.batch_data.sum()
+            # print("Mul output " + str(self.batch_data))
         elif self.operator == "Merge":
             self.batch_data = np.zeros(self.shape)
             for i in range(0, self.size):
