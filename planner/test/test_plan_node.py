@@ -135,7 +135,6 @@ def weaver():
     print("\n-------------------Numpy output:-------------------")
     result = matrixA + matrixB
     result = result.dot(matrixC)
-    print("\n-------------------Numpy output:-------------------")
     print(result)
     if np.allclose(output_matrix, result):
         print("\n-------------------Test Pass!-------------------")
