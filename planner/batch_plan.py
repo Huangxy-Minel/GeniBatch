@@ -225,6 +225,12 @@ class BatchPlan(object):
                 self.opera_nodes_list.insert(0, opera_nodes_list)
             node_in_level = nodes_next_level
 
+    def setBatchScheme(self, batch_scheme):
+        if len(batch_scheme) != len(self.merge_nodes):
+            raise NotImplementedError("The length of batch_scheme is not equal to the num of merge nodes!")
+        else:
+            self.batch_scheme = batch_scheme
+
     def getBatchScheme(self):
         # scheme = []
         # for node in self.encrypted_vector_node:
