@@ -9,7 +9,7 @@ class BatchEncryption(object):
         for row_vec, batch_scheme in zip (data, batch_schemes):
             # make up zeros
             max_element_num, split_num = batch_scheme
-            row_vec = np.hstack(row_vec, np.zeros(max_element_num * split_num - col_num))
+            row_vec = np.hstack((row_vec, np.zeros(max_element_num * split_num - col_num)))
             # package into batch number
             fpn_store = FPN_store.init_from_arr(row_vec, pub_key.n, pub_key.max_int)
             pen_store = fpn_store.encrypt(pub_key)
