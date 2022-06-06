@@ -52,7 +52,7 @@ class BatchPlan(object):
         self.root_nodes = []                        # each root node represents one CompTree
         self.opera_nodes_list = []                  # each element in this list represents a level of operation nodes. nodes_list[0] is the lowest level in BatchPlan
         self.vector_nodes_list = []
-        self.encrypted_vector_node = []
+        # self.encrypted_vector_node = []
         self.matrix_shape = None                    # represents the shape of the output of this BatchPlan
         # self.encrypted_flag = False                 # represents if output matrix is encrypted or not. default: false
         '''Use for Weaver'''
@@ -214,8 +214,8 @@ class BatchPlan(object):
             for node in node_in_level:
                 if node.operator == None:   # vector data
                     self.vector_nodes_list.append(node)
-                    if node.encrypted_flag:
-                        self.encrypted_vector_node.append(node)
+                    # if node.encrypted_flag:
+                    #     self.encrypted_vector_node.append(node)
                 else:
                     opera_nodes_list.append(node)   # operation node
                 for child in node.children:
@@ -226,10 +226,11 @@ class BatchPlan(object):
             node_in_level = nodes_next_level
 
     def getBatchScheme(self):
-        scheme = []
-        for node in self.encrypted_vector_node:
-            scheme.append(node.data_idx)
-        return scheme
+        # scheme = []
+        # for node in self.encrypted_vector_node:
+        #     scheme.append(node.data_idx)
+        # return scheme
+        return self.batch_scheme
 
     def assignVector(self):
         '''Assign vector data to vector nodes'''
