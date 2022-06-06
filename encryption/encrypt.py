@@ -14,5 +14,8 @@ class BatchEncryption(object):
             fpn_store = FPN_store.init_from_arr(row_vec, pub_key.n, pub_key.max_int)
             pen_store = fpn_store.encrypt(pub_key)
             pen_store = pen_store.obfuscation()
-            res.append(pen_store.get_PEN_ndarray())
+            encrypted_row_vector = pen_store.get_PEN_ndarray()
+            # reshape
+            encrypted_row_vector = np.array(encrypted_row_vector)
+            res.append(encrypted_row_vector.reshape((split_num, max_element_num)))
         return res
