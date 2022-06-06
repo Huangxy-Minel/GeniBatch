@@ -63,6 +63,9 @@ class BatchPlan(object):
         self.merge_nodes = []
         '''Use for data storage'''
         self.data_storage = data_storage
+        '''Use for interaction with other parties'''
+        self.batch_scheme = []                      # list of (max_element_num. split_num)
+
 
     def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False):
         '''
@@ -178,13 +181,13 @@ class BatchPlan(object):
         self.mul_flag = True
         
 
-    def weave(self, max_element_num=None):
+    def weave(self):
         '''
         Use to modify BatchPlan, make sure there is no overflow when executing.
         Note:
             Split nodes below Merge. Any nodes over Merge will not use batch-wise encryption
         '''
-        if max_element_num == None:
+        if self.batch_scheme == []:
             for merge_node in self.merge_nodes:
                 max_element_num = int(self.vector_mem_size / merge_node.max_slot_size)     # max element num in one vector
                 if self.vector_size > max_element_num:
@@ -194,8 +197,11 @@ class BatchPlan(object):
                     split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
                     merge_node.max_slot_size += max_element_num
                     merge_node.splitTree(max_element_num, split_num)
+                    self.batch_scheme.append((max_element_num, split_num))
         else:
-            for merge_node in self.merge_nodes:
+            if len(self.batch_scheme) != len(self.merge_nodes):
+                raise NotImplementedError("The length of batch_scheme is not equal to the num of merge nodes!")
+            for merge_node, (max_element_num, split_num) in zip(self.merge_nodes, self.batch_scheme):
                 merge_node.splitTree(max_element_num, split_num)
         self.traverseDAG()      # update node vectors
 
