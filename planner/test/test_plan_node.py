@@ -1,9 +1,8 @@
 import sys, math
-sys.path.append("..")
-sys.path.append("../..")
-from plan_node import PlanNode
-from batch_plan import BatchPlan
-from storage.data_store import DataStorage
+from federatedml.FATE_Engine.python.BatchPlan.planner.plan_node import PlanNode
+from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan
+from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
+from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption
 
 import numpy as np
 
@@ -142,5 +141,21 @@ def weaver():
         print("\n-------------------Test Fail-------------------")
         print(output_matrix == result)
 
-weaver()
+def interaction():
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
+    matrixA = np.random.rand(1, 10)
+    matrixB = np.random.rand(1, 10)
+    matrixC = np.random.rand(10, 20)
+    myBatchPlan.fromMatrix(matrixA, True)
+    myBatchPlan.matrixAdd([matrixB], [False])
+    myBatchPlan.matrixMul([matrixC])
+    myBatchPlan.weave()
+    batch_scheme = myBatchPlan.getBatchScheme()
+    print(batch_scheme)
+    max_element_num, split_num = batch_scheme[0]
+    encrypted_matrixA = np.random.rand(split_num, max_element_num)
+    myBatchPlan.assignEncryptedVector(0, 0, encrypted_matrixA)
+
+interaction()
 

@@ -51,8 +51,8 @@ class BatchPlan(object):
         '''Use for BatchPlan'''
         self.root_nodes = []                        # each root node represents one CompTree
         self.opera_nodes_list = []                  # each element in this list represents a level of operation nodes. nodes_list[0] is the lowest level in BatchPlan
-        self.vector_nodes_list = []
-        # self.encrypted_vector_node = []
+        self.vector_nodes_list = []                 # store normal vector nodes
+        self.encrypted_vector_nodes = {}            # store encrypted vector nodes
         self.matrix_shape = None                    # represents the shape of the output of this BatchPlan
         # self.encrypted_flag = False                 # represents if output matrix is encrypted or not. default: false
         '''Use for Weaver'''
@@ -212,10 +212,11 @@ class BatchPlan(object):
             nodes_next_level = []
             opera_nodes_list = []
             for node in node_in_level:
-                if node.operator == None:   # vector data
+                if node.encrypted_flag and node.operator == None:     # encrypted vector data
+                    matrix_id, row_id, slot_start_idx, vector_len = node.data_idx
+                    self.encrypted_vector_nodes[(matrix_id, row_id, slot_start_idx)] = node
+                elif node.operator == None:   # vector data
                     self.vector_nodes_list.append(node)
-                    # if node.encrypted_flag:
-                    #     self.encrypted_vector_node.append(node)
                 else:
                     opera_nodes_list.append(node)   # operation node
                 for child in node.children:
@@ -245,6 +246,16 @@ class BatchPlan(object):
         for vec_node in self.vector_nodes_list:
             batch_data = self.data_storage.getDataFromIdx(vec_node.getDataIdx())
             vec_node.setBatchData(batch_data)
+    
+    def assignEncryptedVector(self, matrix_id, row_id, encrypted_row_vector):
+        slot_start_idx = 0
+        for node_batch_data in encrypted_row_vector:
+            if (matrix_id, row_id, slot_start_idx) in self.encrypted_vector_nodes.keys():
+                self.encrypted_vector_nodes[(matrix_id, row_id, slot_start_idx)] = node_batch_data
+            else:
+                raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
+            slot_start_idx += len(node_batch_data)
+
 
     def serialExec(self):
         '''Serial execution'''
