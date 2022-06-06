@@ -178,20 +178,24 @@ class BatchPlan(object):
         self.mul_flag = True
         
 
-    def weave(self):
+    def weave(self, max_element_num=None):
         '''
         Use to modify BatchPlan, make sure there is no overflow when executing.
         Note:
             Split nodes below Merge. Any nodes over Merge will not use batch-wise encryption
         '''
-        for merge_node in self.merge_nodes:
-            max_element_num = int(self.vector_mem_size / merge_node.max_slot_size)     # max element num in one vector
-            if self.vector_size > max_element_num:
-                # re-calculate slot memory
-                if self.mul_flag and max_element_num != int(self.vector_mem_size / (merge_node.max_slot_size + max_element_num)):
-                    max_element_num -= 1
-                split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
-                merge_node.max_slot_size += max_element_num
+        if max_element_num == None:
+            for merge_node in self.merge_nodes:
+                max_element_num = int(self.vector_mem_size / merge_node.max_slot_size)     # max element num in one vector
+                if self.vector_size > max_element_num:
+                    # re-calculate slot memory
+                    if self.mul_flag and max_element_num != int(self.vector_mem_size / (merge_node.max_slot_size + max_element_num)):
+                        max_element_num -= 1
+                    split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
+                    merge_node.max_slot_size += max_element_num
+                    merge_node.splitTree(max_element_num, split_num)
+        else:
+            for merge_node in self.merge_nodes:
                 merge_node.splitTree(max_element_num, split_num)
         self.traverseDAG()      # update node vectors
 
