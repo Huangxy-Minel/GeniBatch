@@ -256,7 +256,6 @@ class BatchPlan(object):
                 raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
             slot_start_idx += len(node_batch_data)
 
-
     def serialExec(self):
         '''Serial execution'''
         self.assignVector()

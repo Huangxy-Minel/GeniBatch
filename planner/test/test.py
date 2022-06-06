@@ -6,6 +6,8 @@ B = np.zeros(3)
 C = np.hstack((A,B))
 D = C.reshape((2, 3))
 print(D[0])
+test = (1, 2, 3)
+a, b, c = test
 
 # for row in A:
 #     print(row)
