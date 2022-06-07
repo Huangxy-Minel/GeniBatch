@@ -2,6 +2,7 @@ import numpy as np
 import copy, math
 from federatedml.FATE_Engine.python.BatchPlan.planner.plan_node import PlanNode
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
+from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store
 
 class BatchPlan(object):
     '''
@@ -240,7 +241,7 @@ class BatchPlan(object):
         return self.batch_scheme
 
     def assignVector(self):
-        '''Assign vector data to vector nodes'''
+        '''Assign unencrypted vector data to vector nodes'''
         if self.vector_nodes_list == []:
             raise NotImplementedError("Please update vector nodes list firstly!")
         for vec_node in self.vector_nodes_list:
@@ -251,7 +252,7 @@ class BatchPlan(object):
         slot_start_idx = 0
         for node_batch_data in encrypted_row_vector:
             if (matrix_id, row_id, slot_start_idx) in self.encrypted_vector_nodes.keys():
-                self.encrypted_vector_nodes[(matrix_id, row_id, slot_start_idx)] = node_batch_data
+                self.encrypted_vector_nodes[(matrix_id, row_id, slot_start_idx)].setBatchData(node_batch_data)
             else:
                 raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
             slot_start_idx += len(node_batch_data)
@@ -265,15 +266,69 @@ class BatchPlan(object):
             for node in nodes_in_level:
                 node.serialExec()
         for root in self.root_nodes:
-            outputs.append(root.batch_data)
+            outputs.append(root.getBatchData())
         return outputs
 
-    # def parallelExec(self):
-    #     '''Parallel execution'''
+    def parallelExec(self):
+        '''Parallel execution'''
+        self.assignVector()
+        outputs = []
+        for one_level_opera_nodes in self.opera_nodes_list:
+            self.parallelExecOneLevel(one_level_opera_nodes)
+        for root in self.root_nodes:
+            outputs.append(root.getBatchData())
+        return outputs
 
-    # def parallelExecOneLevel(self, opera_nodes_list):
-    #     nodes_type = opera_nodes_list[0].operator
-    #     if nodes_type == "ADD":
+    def parallelExecOneLevel(self, one_level_opera_nodes):
+        '''Current support 2 children'''
+        nodes_type = one_level_opera_nodes[0].operator   # get node type
+        print(nodes_type)
+        if nodes_type == "ADD":
+            '''make up inputs'''
+            A_list = []
+            B_list = []
+            for node in one_level_opera_nodes:
+                A_list.extend(node.children[0].getBatchData())
+                # TODO: encode 
+                B_list.extend(node.children[1].getBatchData())
+            # A_list = PEN_store.set_from_PaillierEncryptedNumber(A_list)
+            '''calculation'''
+            # res = A_list + B_list
+            # res = res.get_PEN_ndarray()
+            res = np.array(A_list) + np.array(B_list)
+            slot_start_idx = 0
+            for node in one_level_opera_nodes:
+                node.setBatchData(res[slot_start_idx:slot_start_idx + self.batch_scheme[0][0]])
+                slot_start_idx += self.batch_scheme[0][0]
+        elif nodes_type == "MUL":
+            '''make up inputs'''
+            A_list = []
+            B_list = []
+            for node in one_level_opera_nodes:
+                A_list.extend(node.children[0].getBatchData())
+                # TODO: encode 
+                B_list.extend(node.children[1].getBatchData())
+            # A_list = PEN_store.set_from_PaillierEncryptedNumber(A_list)
+            # res = A_list * B_list
+            # res = res.get_PEN_ndarray()
+            '''calculation'''
+            res = np.array(A_list) * np.array(B_list)
+            slot_start_idx = 0
+            for node in one_level_opera_nodes:
+                sum_list = res[slot_start_idx:slot_start_idx + self.batch_scheme[0][0]]
+                slot_start_idx += self.batch_scheme[0][0]
+                # sum_list = PEN_store.set_from_PaillierEncryptedNumber(sum_list)
+                # sum_list.accumulate_sum()
+                # node.setBatchData(sum_list.get_PEN_ndarray())
+                node.setBatchData([np.sum(sum_list)])
+        elif nodes_type == "Merge":
+            for node in one_level_opera_nodes:
+                batch_data = []
+                for i in range(0, node.size):
+                    batch_data.append(node.children[i].getBatchData())
+                print(batch_data)
+                node.setBatchData(np.array(batch_data))
+
 
 
     def printBatchPlan(self):

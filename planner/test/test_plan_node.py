@@ -146,16 +146,37 @@ def interaction():
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
     matrixA = np.random.rand(1, 10)
     matrixB = np.random.rand(1, 10)
-    matrixC = np.random.rand(10, 20)
+    matrixC = np.random.rand(10, 2)
     myBatchPlan.fromMatrix(matrixA, True)
     myBatchPlan.matrixAdd([matrixB], [False])
     myBatchPlan.matrixMul([matrixC])
     myBatchPlan.weave()
+    print("\n-------------------Batch Plan after weave:-------------------")
+    myBatchPlan.printBatchPlan()
     batch_scheme = myBatchPlan.getBatchScheme()
     print(batch_scheme)
     max_element_num, split_num = batch_scheme[0]
     encrypted_matrixA = np.random.rand(split_num, max_element_num)
     myBatchPlan.assignEncryptedVector(0, 0, encrypted_matrixA)
+    print("\n-------------------Begin to exec Batch Plan.-------------------")
+    # print(matrixC)
+    outputs = myBatchPlan.parallelExec()
+    row_num, col_num = myBatchPlan.matrix_shape
+    output_matrix = np.zeros(myBatchPlan.matrix_shape)
+    for row_id in range(row_num):
+        output_matrix[row_id, :] = outputs[row_id]
+    print("\n-------------------Batch Plan output:-------------------")
+    print(output_matrix)
+    print("\n-------------------Numpy output:-------------------")
+    result = matrixA + matrixB
+    result = result.dot(matrixC)
+    print(result)
+    if np.allclose(output_matrix, result):
+        print("\n-------------------Test Pass!-------------------")
+    else:
+        print("\n-------------------Test Fail-------------------")
+        print(output_matrix == result)
+    
 
 interaction()
 
