@@ -19,7 +19,7 @@ class PlanNode(object):
         '''Node properties'''
         self.operator = operator            # ADD, MUL or Merge
         self.batch_data = batch_data        # vector data of this node; type: np.ndarray
-        self.data_idx = ()
+        self.data_idx = []
         '''Vector properties'''
         self.max_slot_size = max_slot_size          # represent max memory bits of each slot
         self.shape = (0,0)
@@ -39,7 +39,7 @@ class PlanNode(object):
 
         '''
         new_node = PlanNode(max_slot_size=slot_mem, encrypted_flag=encrypted_flag)
-        new_node.data_idx = (matrix_id, vector_id, slot_start_idx, vector_len)
+        new_node.data_idx.append((matrix_id, vector_id, slot_start_idx, vector_len))
         new_node.shape = (1, vector_len)
         new_node.encrypted_flag = encrypted_flag
         return new_node
@@ -152,6 +152,8 @@ class PlanNode(object):
             new_add_node.shape = (1,1)
             self.addChild(new_add_node)
         for i in range(split_num):
+            if i % 100 == 0:
+                print(i)
             '''split row vector secondly'''
             row_vec_node = copy.deepcopy(mul_nodes[0].children[0])
             row_vec_node.recursionUpdate(max_element_num, element_idx)
@@ -170,12 +172,14 @@ class PlanNode(object):
             element_idx += max_element_num      # update start idx
 
 
-    # def recursionMakeUpZeros(self, tail_zero_num):
-    #     if self.operator == None:   # vector node
-    #         self.batch_data = np.hstack((self.batch_data, np.zeros((1, tail_zero_num))))
-    #     else:
-    #         for child in self.children:
-    #             child.recursionMakeUpZeros(tail_zero_num)
+    def recursionUpdateDataIdx(self, max_element_num, split_num):
+        if self.operator == None:   # vector node
+            if len(self.data_idx) == 1:     # vector node which has not been weaved
+                matrix_id, vector_id, _, _ = self.data_idx[0]
+                self.data_idx = [(matrix_id, vector_id, i*max_element_num, max_element_num) for i in range(split_num)]
+        else:
+            for child in self.children:
+                child.recursionUpdateDataIdx(max_element_num, split_num)
 
 
     def recursionUpdate(self, max_element_num, element_idx):
@@ -234,15 +238,20 @@ class PlanNode(object):
             # print(self.children[0].getBatchData())
             # print(self.children[1].getBatchData())
             for i in range(1, self.size):
-                self.batch_data = self.batch_data + self.children[i].getBatchData()
+                other_batch_data = self.children[i].getBatchData()
+                for split_idx in range(len(other_batch_data)):
+                    self.batch_data[split_idx] = self.batch_data[split_idx] + other_batch_data[split_idx]
         elif self.operator == "MUL":
             self.batch_data = copy.deepcopy(self.children[0].getBatchData())
             # print("MUL inputs")
             # print(self.children[0].getBatchData())
             # print(self.children[1].getBatchData())
             for i in range(1, self.size):
-                self.batch_data = self.batch_data * self.children[i].getBatchData()
-                self.batch_data = self.batch_data.sum()
+                other_batch_data = self.children[i].getBatchData()
+                for split_idx in range(len(other_batch_data)):
+                    self.batch_data[split_idx] = self.batch_data[split_idx] * other_batch_data[split_idx]
+                    self.batch_data[split_idx] = self.batch_data[split_idx].sum()
+                self.batch_data = np.array(self.batch_data).sum()
             # print("Mul output " + str(self.batch_data))
         elif self.operator == "Merge":
             self.batch_data = np.zeros(self.shape)

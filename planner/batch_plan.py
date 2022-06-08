@@ -1,3 +1,4 @@
+from heapq import merge
 import numpy as np
 import copy, math
 from federatedml.FATE_Engine.python.BatchPlan.planner.plan_node import PlanNode
@@ -190,20 +191,24 @@ class BatchPlan(object):
         '''
         if self.batch_scheme == []:
             for merge_node in self.merge_nodes:
+                merge_node.max_slot_size = 2 * merge_node.max_slot_size - self.element_mem_size
                 max_element_num = int(self.vector_mem_size / merge_node.max_slot_size)     # max element num in one vector
                 if self.vector_size > max_element_num:
                     # re-calculate slot memory
-                    if self.mul_flag and max_element_num != int(self.vector_mem_size / (merge_node.max_slot_size + max_element_num)):
+                    if self.mul_flag and max_element_num != int(self.vector_mem_size / (merge_node.max_slot_size + 2 * max_element_num)):
                         max_element_num -= 1
                     split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
-                    merge_node.max_slot_size += max_element_num
-                    merge_node.splitTree(max_element_num, split_num)
+                    merge_node.max_slot_size += 2 * max_element_num
+                    print(merge_node.max_slot_size, max_element_num, split_num)
+                    # merge_node.splitTree(max_element_num, split_num)
+                    merge_node.recursionUpdateDataIdx(max_element_num, split_num)
                     self.batch_scheme.append((max_element_num, split_num))
         else:
             if len(self.batch_scheme) != len(self.merge_nodes):
                 raise NotImplementedError("The length of batch_scheme is not equal to the num of merge nodes!")
             for merge_node, (max_element_num, split_num) in zip(self.merge_nodes, self.batch_scheme):
-                merge_node.splitTree(max_element_num, split_num)
+                # merge_node.splitTree(max_element_num, split_num)
+                merge_node.recursionUpdateDataIdx(max_element_num, split_num)
         self.traverseDAG()      # update node vectors
 
     def traverseDAG(self):
@@ -245,7 +250,7 @@ class BatchPlan(object):
         if self.vector_nodes_list == []:
             raise NotImplementedError("Please update vector nodes list firstly!")
         for vec_node in self.vector_nodes_list:
-            batch_data = self.data_storage.getDataFromIdx(vec_node.getDataIdx())
+            batch_data = [self.data_storage.getDataFromIdx(split_data_idx) for split_data_idx in vec_node.data_idx]
             vec_node.setBatchData(batch_data)
     
     def assignEncryptedVector(self, matrix_id, row_id, encrypted_row_vector):
@@ -328,6 +333,12 @@ class BatchPlan(object):
                     batch_data.append(node.children[i].getBatchData())
                 print(batch_data)
                 node.setBatchData(np.array(batch_data))
+    
+    # def makeupInputs(self, one_level_opera_nodes):
+    #     res_list = []
+    #     for node in one_level_opera_nodes:
+    #         for i in range(0, node.size):
+
 
 
 

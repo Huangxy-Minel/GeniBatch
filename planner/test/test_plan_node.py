@@ -92,13 +92,13 @@ def weaver():
     # matrixA = np.random.randint(63, size=(1,8))
     # matrixB = np.random.randint(63, size=(1,8))
     # matrixC = np.random.randint(63, size=(8,2))
-    matrixA = np.random.rand(1, 10000)
-    matrixB = np.random.rand(1, 10000)
-    matrixC = np.random.rand(10000, 20)
+    matrixA = np.random.rand(1, 100)
+    matrixB = np.random.rand(1, 100)
+    matrixC = np.random.rand(100, 20)
 
 
     print("\n-------------------Test Report:-------------------")
-    myBatchPlan.fromMatrix(matrixA, True)
+    myBatchPlan.fromMatrix(matrixA, False)
     print("In matrixA, max_slot_size of each vector is:", end=" ")
     for root in myBatchPlan.root_nodes:
         print(root.max_slot_size, end=" ")
@@ -124,6 +124,11 @@ def weaver():
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")
     # print(matrixC)
+    batch_scheme = myBatchPlan.getBatchScheme()
+    print(batch_scheme)
+    # max_element_num, split_num = batch_scheme[0]
+    # encrypted_matrixA = matrixA.reshape((split_num, max_element_num))
+    # myBatchPlan.assignEncryptedVector(0, 0, encrypted_matrixA)
     outputs = myBatchPlan.serialExec()
     row_num, col_num = myBatchPlan.matrix_shape
     output_matrix = np.zeros(myBatchPlan.matrix_shape)
@@ -178,5 +183,5 @@ def interaction():
         print(output_matrix == result)
     
 
-interaction()
+weaver()
 
