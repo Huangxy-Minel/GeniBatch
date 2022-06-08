@@ -4,13 +4,10 @@ import copy, math
 
 class PlanNode(object):
     '''
-    versionL 2.0
-    Note:
-        Upate the typology to DAG
-    version: 1.1
-    Node in the computational typology, which is called BatchPlan.
-    Two types of Node: vector & operator
-    Vector type: only row vector
+    Description:
+        Node in the computational typology, which is called BatchPlan.
+        Two types of Node: vector & operator
+        Vector type: only row vector
 
     TODO: Better encapsulation. Specify which variables are inaccessible, exp: PlanNode._operatror
     '''
@@ -18,14 +15,13 @@ class PlanNode(object):
     def __init__(self, operator=None, batch_data=None, max_slot_size=0, encrypted_flag=False):
         '''Node properties'''
         self.operator = operator            # ADD, MUL or Merge
-        self.batch_data = batch_data        # vector data of this node; type: np.ndarray
-        self.data_idx = []
+        self.batch_data = batch_data        # vector data of this node; type: list or just one number, according to node shape; exp: [np.array, np.array, ...] or [PEN, PEN, ...]
+        self.data_idx_list = []             # store the hash key in data storage. Each element in data idx list: (matrix_id, vec_id, slot_start_idx, length)
         '''Vector properties'''
         self.max_slot_size = max_slot_size          # represent max memory bits of each slot
         self.shape = (0,0)
         '''DAG Graph'''
-        # self.parent = []             # The parent node, for root node, parent = []
-        self.children = []           # A list of children
+        self.children = []           # A list of children nodes
         self.size = 0                # children num
         '''Node attributes'''
         self.state = 0               # represents if the output data has been prepared or not. 0: not finished; 1: finished
@@ -36,10 +32,12 @@ class PlanNode(object):
         '''
         Create a node from a vector but do not set the batch data. Only allow the row vector
         Input:
-
+            matrix_id, vector_id, vector_len, slot_start_idx: represent data idx in the data storage
+            slot_mem: current memory of each slot
+            encrypted_flag: if the node is encrypted or not
         '''
         new_node = PlanNode(max_slot_size=slot_mem, encrypted_flag=encrypted_flag)
-        new_node.data_idx.append((matrix_id, vector_id, slot_start_idx, vector_len))
+        new_node.data_idx_list.append((matrix_id, vector_id, slot_start_idx, vector_len))
         new_node.shape = (1, vector_len)
         new_node.encrypted_flag = encrypted_flag
         return new_node
@@ -51,6 +49,8 @@ class PlanNode(object):
         '''
         if operator == "ADD" or operator == "MUL" or operator == "Merge":
             new_node = PlanNode(operator=operator)
+        else: 
+            raise TypeError("Please check the operation type, just supports ADD, MUL and Merge!")
         return new_node
 
     def getBatchData(self):
@@ -58,8 +58,19 @@ class PlanNode(object):
             raise NotImplementedError("Current node has not gotten the batch data, please check the execution logic or data assignment process!")
         return self.batch_data
 
-    def getDataIdx(self):
-        return self.data_idx
+    def getDataIdxList(self):
+        '''
+        Return the data_idx_list
+        Note:
+            1. Only vector node has data_idx_list
+            2. Vector node may be splitted, therefore, the data_idx_list includes several splitted data idx
+        '''
+        if self.operator:
+            raise NotImplementedError("Only vector node has data idx!")
+        return self.data_idx_list
+
+    def getDataIdx(self, data_id):
+        return self.data_idx_list[data_id]
 
     def getShape(self):
         return self.shape
@@ -70,24 +81,6 @@ class PlanNode(object):
     def setBatchData(self, data):
         self.batch_data = data
         self.state = 1
-
-    # def changeParent(self, parent_node):
-    #     '''
-    #     Change current parent for this node
-    #     Input:
-    #         parent_node: class PlanNode
-    #     '''
-    #     if self.parent == None:
-    #         raise NotImplementedError("Current node is root, do not call this function!")
-    #     self.parent = parent_node
-
-    # def addParent(self, parent_node):
-    #     '''
-    #     Add a parent for current root node in Batch Plan
-    #     Input:
-    #         parent_node: class PlanNode
-    #     '''
-    #     self.parent.append(parent_node)
     
     def addChild(self, child_node):
         '''
@@ -123,6 +116,7 @@ class PlanNode(object):
     
     def splitTree(self, max_element_num, split_num):
         '''
+        Note: will be removed in the future version
         Split CompTree, make sure vector size of each node is smaller than max_element_num
         Properties:
             1. Only one level of CompTree contains Merge Operator and the operation above Merge node can only be ADD
@@ -174,9 +168,9 @@ class PlanNode(object):
 
     def recursionUpdateDataIdx(self, max_element_num, split_num):
         if self.operator == None:   # vector node
-            if len(self.data_idx) == 1:     # vector node which has not been weaved
-                matrix_id, vector_id, _, _ = self.data_idx[0]
-                self.data_idx = [(matrix_id, vector_id, i*max_element_num, max_element_num) for i in range(split_num)]
+            if len(self.data_idx_list) == 1:     # vector node which has not been weaved
+                matrix_id, vector_id, _, _ = self.data_idx_list[0]
+                self.data_idx_list = [(matrix_id, vector_id, i*max_element_num, max_element_num) for i in range(split_num)]
         else:
             for child in self.children:
                 child.recursionUpdateDataIdx(max_element_num, split_num)
@@ -205,6 +199,7 @@ class PlanNode(object):
 
     def execNode(self):
         '''
+        Note: will be removed in the future version
         Execute node function recursively
         '''
         if self.state == 1:             # for vector node or operator node which has been executed
@@ -241,6 +236,7 @@ class PlanNode(object):
                 other_batch_data = self.children[i].getBatchData()
                 for split_idx in range(len(other_batch_data)):
                     self.batch_data[split_idx] = self.batch_data[split_idx] + other_batch_data[split_idx]
+            # print(self.batch_data)
         elif self.operator == "MUL":
             self.batch_data = copy.deepcopy(self.children[0].getBatchData())
             # print("MUL inputs")
@@ -250,8 +246,8 @@ class PlanNode(object):
                 other_batch_data = self.children[i].getBatchData()
                 for split_idx in range(len(other_batch_data)):
                     self.batch_data[split_idx] = self.batch_data[split_idx] * other_batch_data[split_idx]
-                    self.batch_data[split_idx] = self.batch_data[split_idx].sum()
-                self.batch_data = np.array(self.batch_data).sum()
+                    self.batch_data[split_idx] = sum(self.batch_data[split_idx])
+                self.batch_data = sum(self.batch_data)
             # print("Mul output " + str(self.batch_data))
         elif self.operator == "Merge":
             self.batch_data = np.zeros(self.shape)

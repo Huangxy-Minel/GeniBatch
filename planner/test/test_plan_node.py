@@ -92,13 +92,13 @@ def weaver():
     # matrixA = np.random.randint(63, size=(1,8))
     # matrixB = np.random.randint(63, size=(1,8))
     # matrixC = np.random.randint(63, size=(8,2))
-    matrixA = np.random.rand(1, 100)
-    matrixB = np.random.rand(1, 100)
-    matrixC = np.random.rand(100, 20)
+    matrixA = np.random.rand(1, 11)
+    matrixB = np.random.rand(1, 11)
+    matrixC = np.random.rand(11, 1)
 
 
     print("\n-------------------Test Report:-------------------")
-    myBatchPlan.fromMatrix(matrixA, False)
+    myBatchPlan.fromMatrix(matrixA, True)
     print("In matrixA, max_slot_size of each vector is:", end=" ")
     for root in myBatchPlan.root_nodes:
         print(root.max_slot_size, end=" ")
@@ -120,15 +120,19 @@ def weaver():
     myBatchPlan.printBatchPlan()
     print("\n-------------------Batch Plan after weave:-------------------")
     myBatchPlan.weave()
+    batch_scheme = myBatchPlan.getBatchScheme()
+    max_element_num, split_num = batch_scheme[0]
+    print("Element num in one vector: ", + max_element_num)
+    print("Split num: ", + split_num)
     # myBatchPlan.printBatchPlan()
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")
     # print(matrixC)
-    batch_scheme = myBatchPlan.getBatchScheme()
-    print(batch_scheme)
-    # max_element_num, split_num = batch_scheme[0]
-    # encrypted_matrixA = matrixA.reshape((split_num, max_element_num))
-    # myBatchPlan.assignEncryptedVector(0, 0, encrypted_matrixA)
+    col_num = matrixA.shape[1]
+    encrypted_matrixA = np.hstack((matrixA, np.zeros((1, max_element_num * split_num - col_num))))
+    encrypted_matrixA = encrypted_matrixA.reshape((split_num, max_element_num))
+    encrypted_matrixA = [row_vec for row_vec in encrypted_matrixA]
+    myBatchPlan.assignEncryptedVector(0, 0, encrypted_matrixA)
     outputs = myBatchPlan.serialExec()
     row_num, col_num = myBatchPlan.matrix_shape
     output_matrix = np.zeros(myBatchPlan.matrix_shape)

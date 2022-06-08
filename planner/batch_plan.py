@@ -7,40 +7,25 @@ from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store
 
 class BatchPlan(object):
     '''
-    version: 2.0
-    Update:
-    1. Update the data storage and interfaces
-    2. Update data struture to support parallel execution
-    3. Update computation typology to DAG
+    version 2.1:
 
-    Note: 
-    1. Make sure the encryption multiplication only occurs once
+    Purpose: Describe the computational topology: DAG.
+
+    Description: 
+        Provide common encrypted matrix operator such as Add and Multiplication.
+        Create before calculation and lazy operate.
+        Weave the current DAG to get a batch sheme, other parties can encrypt the share vector using this batch scheme.
+        During execution, the memory of each slot of a batch number is enough. Therefore, no overflow in execution process.
+
+    Note:
+        1. Only root nodes can be operated
+        2. Node type of encrypted data can only be row vector
+        3. After multiplication, a batch encrypted number will be copied for multiple times. Therefore, MUL operation can occur for only once 
+
+    For version 2.1, please call "matrixMul" for only once. 
     Exp:
         Target: ([A]*B+[C]) * D; [·] means homomorphic encryption
         Correct usage: [A]*(B*D) + [C]*D
-    -------------------------------------------------------------
-    Description in version 1.1:
-
-    Describe the computational typology.
-    Provide common encrypted matrix operator such as Add and Multiplication.
-    Create before calculation and lazy operate.
-
-    Note:
-    1. Only root nodes can be operated
-    2. Node type of encrypted data can only is row vector
-    3. Currently, suppose one input of each operator is encrypted
-    4. All elements should be integer
-
-    For version 1.1, please call "matrixMul" for only once. 
-    Exp:
-        Goal: A*B*C
-        Incorrect usage:
-            myBatchPlan.fromMatrix(A)
-            myBatchPlan.matrixMul(B)
-            myBatchPlan.matrixMul(C)
-        Correct usage:
-            myBatchPlan.fromMatrix(A)
-            myBatchPlan.matrixMul([B,C])
 
     TODO: 
         1. Provide primitives which supports to be called for any times
@@ -61,12 +46,12 @@ class BatchPlan(object):
         self.vector_mem_size = vector_mem_size      # represents memory size of each vector. default: 1024bits
         self.element_mem_size = element_mem_size    # the memory size of one slot number
         self.vector_size = 0                        # num of elements in each node
-        self.mul_flag = False
-        self.merge_nodes = []
+        self.mul_flag = False                       # record if current batch plan includes mul operations or not
+        self.merge_nodes = []                       # record merge nodes, since only node under merge nodes need be splitted
         '''Use for data storage'''
-        self.data_storage = data_storage
+        self.data_storage = data_storage            # database of the batch plan
         '''Use for interaction with other parties'''
-        self.batch_scheme = []                      # list of (max_element_num. split_num)
+        self.batch_scheme = []                      # list of (max_element_num. split_num). Each element represents the batch plan of a given root node
 
 
     def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False):
@@ -199,7 +184,6 @@ class BatchPlan(object):
                         max_element_num -= 1
                     split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
                     merge_node.max_slot_size += 2 * max_element_num
-                    print(merge_node.max_slot_size, max_element_num, split_num)
                     # merge_node.splitTree(max_element_num, split_num)
                     merge_node.recursionUpdateDataIdx(max_element_num, split_num)
                     self.batch_scheme.append((max_element_num, split_num))
@@ -219,8 +203,8 @@ class BatchPlan(object):
             opera_nodes_list = []
             for node in node_in_level:
                 if node.encrypted_flag and node.operator == None:     # encrypted vector data
-                    matrix_id, row_id, slot_start_idx, vector_len = node.data_idx
-                    self.encrypted_vector_nodes[(matrix_id, row_id, slot_start_idx)] = node
+                    matrix_id, row_id, _, _ = node.getDataIdx(0)
+                    self.encrypted_vector_nodes[(matrix_id, row_id)] = node
                 elif node.operator == None:   # vector data
                     self.vector_nodes_list.append(node)
                 else:
@@ -239,10 +223,6 @@ class BatchPlan(object):
             self.batch_scheme = batch_scheme
 
     def getBatchScheme(self):
-        # scheme = []
-        # for node in self.encrypted_vector_node:
-        #     scheme.append(node.data_idx)
-        # return scheme
         return self.batch_scheme
 
     def assignVector(self):
@@ -250,17 +230,15 @@ class BatchPlan(object):
         if self.vector_nodes_list == []:
             raise NotImplementedError("Please update vector nodes list firstly!")
         for vec_node in self.vector_nodes_list:
-            batch_data = [self.data_storage.getDataFromIdx(split_data_idx) for split_data_idx in vec_node.data_idx]
+            batch_data = [self.data_storage.getDataFromIdx(split_data_idx) for split_data_idx in vec_node.getDataIdxList()]
             vec_node.setBatchData(batch_data)
     
     def assignEncryptedVector(self, matrix_id, row_id, encrypted_row_vector):
-        slot_start_idx = 0
-        for node_batch_data in encrypted_row_vector:
-            if (matrix_id, row_id, slot_start_idx) in self.encrypted_vector_nodes.keys():
-                self.encrypted_vector_nodes[(matrix_id, row_id, slot_start_idx)].setBatchData(node_batch_data)
-            else:
-                raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
-            slot_start_idx += len(node_batch_data)
+        '''Assign encrypted vector data to vector nodes'''
+        if (matrix_id, row_id) in self.encrypted_vector_nodes.keys():
+            self.encrypted_vector_nodes[(matrix_id, row_id)].setBatchData(encrypted_row_vector)
+        else:
+            raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
 
     def serialExec(self):
         '''Serial execution'''
