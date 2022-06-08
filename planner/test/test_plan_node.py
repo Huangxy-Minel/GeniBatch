@@ -92,9 +92,9 @@ def weaver():
     # matrixA = np.random.randint(63, size=(1,8))
     # matrixB = np.random.randint(63, size=(1,8))
     # matrixC = np.random.randint(63, size=(8,2))
-    matrixA = np.random.rand(1, 11)
-    matrixB = np.random.rand(1, 11)
-    matrixC = np.random.rand(11, 1)
+    matrixA = np.random.rand(1, 100000)
+    matrixB = np.random.rand(1, 100000)
+    matrixC = np.random.rand(100000, 20)
 
 
     print("\n-------------------Test Report:-------------------")
