@@ -48,10 +48,14 @@ class BatchPlan(object):
         self.vector_size = 0                        # num of elements in each node
         self.mul_flag = False                       # record if current batch plan includes mul operations or not
         self.merge_nodes = []                       # record merge nodes, since only node under merge nodes need be splitted
+        self.mul_times = 0
+        self.add_times = 0
         '''Use for data storage'''
         self.data_storage = data_storage            # database of the batch plan
         '''Use for interaction with other parties'''
         self.batch_scheme = []                      # list of (max_element_num. split_num). Each element represents the batch plan of a given root node
+        '''Use for encoder'''
+        self.encode_element_size = 0
 
 
     def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False):
@@ -115,6 +119,7 @@ class BatchPlan(object):
             new_opera_node.max_slot_size = max(max_bit_list) + len(max_bit_list) - 1     # update the current max slot bits
             add_nodes_list.append(new_opera_node)
             self.root_nodes[row_id] = new_opera_node    # replace root node
+        self.add_times += 1
         # self.opera_nodes_list.append(add_nodes_list)   # record the operation level
 
     def matrixMul(self, matrix_list:list):
@@ -166,6 +171,7 @@ class BatchPlan(object):
         # self.opera_nodes_list.append(merge_nodes_list)
         self.merge_nodes = merge_nodes_list
         self.mul_flag = True
+        self.mul_times += 1
         
 
     def weave(self):
@@ -176,14 +182,13 @@ class BatchPlan(object):
         '''
         if self.batch_scheme == []:
             for merge_node in self.merge_nodes:
-                merge_node.max_slot_size = 2 * merge_node.max_slot_size - self.element_mem_size
-                max_element_num = int(self.vector_mem_size / merge_node.max_slot_size)     # max element num in one vector
+                if self.mul_flag:
+                    merge_node.max_slot_size += math.ceil(math.log2(self.vector_size))      # elements will sum up in matrix mul
+                self.encode_sign_bits = merge_node.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
+                self.encode_slot_mem = merge_node.max_slot_size + merge_node.max_slot_size * self.mul_times + self.add_times + self.mul_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
+                max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
                 if self.vector_size > max_element_num:
-                    # re-calculate slot memory
-                    if self.mul_flag and max_element_num != int(self.vector_mem_size / (merge_node.max_slot_size + 2 * max_element_num)):
-                        max_element_num -= 1
                     split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
-                    merge_node.max_slot_size += 2 * max_element_num
                     # merge_node.splitTree(max_element_num, split_num)
                     merge_node.recursionUpdateDataIdx(max_element_num, split_num)
                     self.batch_scheme.append((max_element_num, split_num))

@@ -9,11 +9,11 @@ class BatchEncoder(object):
     '''
         Encode a list of number to a batch number
     '''
-    def __init__(self, max_value, bit_width, slot_mem_size):
+    def __init__(self, max_value, bit_width, slot_mem_size, sign_length):
         self.max_value = max_value
         self.bit_width = bit_width
         self.slot_mem_size = slot_mem_size
-        self.sign_bits = int((slot_mem_size - bit_width) / 2)
+        self.sign_bits = sign_length
 
     def quantize(self, row_vec, scaling):
         if isinstance(row_vec, list):
