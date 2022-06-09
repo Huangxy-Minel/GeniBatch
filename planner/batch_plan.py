@@ -58,7 +58,7 @@ class BatchPlan(object):
         '''
         Initialize Batch Plan from a matrix
         Input:
-            matrixA: ndarray, a matrix
+            matrixA: ndarray, a matrix, should be 2-D array
             encrypted_flag: represents the matrix is encrypted or not
         '''
         if self.matrix_shape != None or self.root_nodes != []:
@@ -79,7 +79,7 @@ class BatchPlan(object):
         '''
         Primitive for user: Matrix Add
         Input: 
-            matrix_list: list of np.ndarray or list of BatchPlan
+            matrix_list: list of np.ndarray or list of BatchPlan; each matrix should be 2-D array
             encrypted_flag_list: bool list, represents encrypted_flag of each matrix
         Note: 
             matrice in matrix_list can be encrypted
@@ -120,7 +120,7 @@ class BatchPlan(object):
     def matrixMul(self, matrix_list:list):
         '''
         Primitive for user: Matrix Mul
-        Input: matrix_list: list of np.ndarray
+        Input: matrix_list: list of np.ndarray; each matrix should be 2-D array
         Note: matrix in matrix_list must be unenrypted, the encrypted matrix can multiple for only once
         '''
         # check inputs
@@ -226,7 +226,10 @@ class BatchPlan(object):
         return self.batch_scheme
 
     def assignVector(self):
-        '''Assign unencrypted vector data to vector nodes'''
+        '''
+            Assign unencrypted vector data to vector nodes
+            Note: each vector data should be [array(...), array(...), ...], that means original vector has been splitted to several batch (array)
+        '''
         if self.vector_nodes_list == []:
             raise NotImplementedError("Please update vector nodes list firstly!")
         for vec_node in self.vector_nodes_list:
@@ -234,7 +237,10 @@ class BatchPlan(object):
             vec_node.setBatchData(batch_data)
     
     def assignEncryptedVector(self, matrix_id, row_id, encrypted_row_vector):
-        '''Assign encrypted vector data to vector nodes'''
+        '''
+            Assign encrypted vector data to vector nodes
+            Note: encrypted_row_vector should be [PaillierEncryptedNumber, PaillierEncryptedNumber, ...]; each PaillierEncryptedNumber represents a splitted of original vector (batch encrypted number)
+        '''
         if (matrix_id, row_id) in self.encrypted_vector_nodes.keys():
             self.encrypted_vector_nodes[(matrix_id, row_id)].setBatchData(encrypted_row_vector)
         else:

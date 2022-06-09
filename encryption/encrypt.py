@@ -3,7 +3,10 @@ from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store
 class BatchEncryption(object):
     @staticmethod
     def batchEncrypt(data:np.array, pub_key, batch_scheme):
-        ''''Encrypt a row vector based on a given batch scheme'''
+        ''''
+            Encrypt a row vector based on a given batch scheme
+            Encrypting process: row vector -> BatchEncodeNumber -> FixPointNumber -> PaillierEncryptedNumber
+        '''
         col_num = data.shape[1]
         row_vec = data[0]
         # make up zeros

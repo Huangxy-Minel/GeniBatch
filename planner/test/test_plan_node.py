@@ -1,4 +1,4 @@
-import sys, math
+import sys, math, time
 from federatedml.FATE_Engine.python.BatchPlan.planner.plan_node import PlanNode
 from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
@@ -88,7 +88,7 @@ def matrix_mul():
 
 def weaver():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32)
     # matrixA = np.random.randint(63, size=(1,8))
     # matrixB = np.random.randint(63, size=(1,8))
     # matrixC = np.random.randint(63, size=(8,2))
