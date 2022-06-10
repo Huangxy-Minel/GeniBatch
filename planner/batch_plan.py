@@ -58,7 +58,7 @@ class BatchPlan(object):
         self.batch_scheme = []                      # list of (max_element_num. split_num). Each element represents the batch plan of a given root node
         '''Use for encoder'''
         self.encoder = None
-        self.encode_element_size = 0
+        self.encode_slot_mem = 0
         self.encode_sign_bits = 0
         '''Use for encrypter'''
         self.encrypter = None
@@ -204,6 +204,7 @@ class BatchPlan(object):
             for merge_node, (max_element_num, split_num) in zip(self.merge_nodes, self.batch_scheme):
                 # merge_node.splitTree(max_element_num, split_num)
                 merge_node.recursionUpdateDataIdx(max_element_num, split_num)
+        self.setEncoder(1)
         self.traverseDAG()      # update node vectors
 
     def traverseDAG(self):
@@ -257,20 +258,35 @@ class BatchPlan(object):
         else:
             raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
 
+    def setEncoder(self, max_value):
+        self.encoder = BatchEncoder(max_value, self.element_mem_size, self.encode_slot_mem, self.encode_sign_bits)
+
     def setEncrypter(self, public_key=None, private_key=None):
         if self.encoder == None:
-            self.encoder = BatchEncoder(1, self.element_mem_size, self.encode_element_size, self.encode_sign_bits)
+            raise NotImplementedError("Please set encoder before encryption!")
         self.encrypter = BatchEncryption(self.encoder, public_key, private_key)
 
     def encode(self, row_vec):
-        '''Batch encode given row vector; row_vec should be 1-D array'''
+        '''Batch encode given row vector; row_vec should be 2-D array'''
         if self.encoder == None:
-            self.encoder = BatchEncoder(1, self.element_mem_size, self.encode_element_size, self.encode_sign_bits)
+            raise NotImplementedError("Please set encoder before encoding!")
         return self.encoder.batchEncode(row_vec)
 
-    def encrypt(self, row_vec, row_batch_scheme, pub_key=None):
-        '''According to the batch scheme, encrypt given row_vec; row_vec should be 2-D array'''
-        return self.encrypter.batchEncrypt(row_vec, row_batch_scheme, pub_key)
+    def encrypt(self, row_vec:np.array, row_batch_scheme, pub_key=None):
+        '''
+            According to the batch scheme, encrypt given row_vec
+            Input:
+                row_vec: a 2-D array. shape: (1, length of this row vector)
+                row_batch_scheme: the batch scheme (max_element_num, split_num) of this row vector
+            Return:
+                a list of PaillierEncryptedNumber
+        '''
+        # make up zeros
+        max_element_num, split_num = row_batch_scheme
+        col_num = row_vec.shape[1]
+        row_vec = np.hstack((row_vec, np.zeros((1, max_element_num * split_num - col_num))))
+        row_vec = row_vec.reshape(split_num, max_element_num)
+        return self.encrypter.gpuBatchEncrypt(row_vec, pub_key)
 
 
     def serialExec(self):

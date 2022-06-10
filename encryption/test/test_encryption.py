@@ -5,6 +5,7 @@ from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncod
 from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption
 
 from federatedml.secureprotol import PaillierEncrypt
+from federatedml.util.fixpoint_solver import FixedPointEncoder
 
 def encrypt_decrypt():
     data_store = DataStorage()
@@ -28,6 +29,7 @@ def encrypt_decrypt():
     print("\n-------------------Encryption:-------------------")
     print("Plaintext: ")
     print(matrixA)
+    fix_encoder = FixedPointEncoder(2**64)
     encrypter = PaillierEncrypt()
     encrypter.generate_key()
     myBatchPlan.setEncrypter()
