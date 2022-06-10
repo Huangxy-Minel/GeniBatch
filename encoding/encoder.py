@@ -50,11 +50,10 @@ class BatchEncoder(object):
             else:
                 quantize_row_vector.insert(0, complement)
             big_integer = big_integer >> self.slot_mem_size
-        print(quantize_row_vector)
         return quantize_row_vector
 
     def batchEncode(self, row_vec):
-        '''Encode a batch of data to a BatchNumber'''
+        '''Encode a batch of data to a BatchNumber; row_vec should be 1-D array'''
         '''Quantize'''
         scaling = self.max_value / pow(2, self.bit_width - 1)
         quantize_row_vector = self.quantize(row_vec, scaling)

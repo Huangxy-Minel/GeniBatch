@@ -3,6 +3,8 @@ import numpy as np
 import copy, math
 from federatedml.FATE_Engine.python.BatchPlan.planner.plan_node import PlanNode
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
+from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
+from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store
 
 class BatchPlan(object):
@@ -55,7 +57,11 @@ class BatchPlan(object):
         '''Use for interaction with other parties'''
         self.batch_scheme = []                      # list of (max_element_num. split_num). Each element represents the batch plan of a given root node
         '''Use for encoder'''
+        self.encoder = None
         self.encode_element_size = 0
+        self.encode_sign_bits = 0
+        '''Use for encrypter'''
+        self.encrypter = None
 
 
     def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False):
@@ -251,6 +257,22 @@ class BatchPlan(object):
         else:
             raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
 
+    def setEncrypter(self, public_key=None, private_key=None):
+        if self.encoder == None:
+            self.encoder = BatchEncoder(1, self.element_mem_size, self.encode_element_size, self.encode_sign_bits)
+        self.encrypter = BatchEncryption(self.encoder, public_key, private_key)
+
+    def encode(self, row_vec):
+        '''Batch encode given row vector; row_vec should be 1-D array'''
+        if self.encoder == None:
+            self.encoder = BatchEncoder(1, self.element_mem_size, self.encode_element_size, self.encode_sign_bits)
+        return self.encoder.batchEncode(row_vec)
+
+    def encrypt(self, row_vec, row_batch_scheme, pub_key=None):
+        '''According to the batch scheme, encrypt given row_vec; row_vec should be 2-D array'''
+        return self.encrypter.batchEncrypt(row_vec, row_batch_scheme, pub_key)
+
+
     def serialExec(self):
         '''Serial execution'''
         self.assignVector()
@@ -322,13 +344,6 @@ class BatchPlan(object):
                     batch_data.append(node.children[i].getBatchData())
                 print(batch_data)
                 node.setBatchData(np.array(batch_data))
-    
-    # def makeupInputs(self, one_level_opera_nodes):
-    #     res_list = []
-    #     for node in one_level_opera_nodes:
-    #         for i in range(0, node.size):
-
-
 
 
     def printBatchPlan(self):
