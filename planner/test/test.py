@@ -10,6 +10,7 @@ print(D[0])
 test = (1, 2, 3)
 a, b, c = test
 print(pow(2, 1000))
+print(0 << 271)
 
 # for row in A:
 #     print(row)

@@ -36,7 +36,7 @@ class BatchEncoder(object):
         for sign_num in quantize_row_vector:
             res = res << self.slot_mem_size
             complement = int(sign_num) & (pow(2, self.sign_bits + self.bit_width) - 1)   # transform to complement
-            res += complement
+            res = res | complement
         return res
 
     def de_squeeze(self, batch_number:BatchEncodeNumber):

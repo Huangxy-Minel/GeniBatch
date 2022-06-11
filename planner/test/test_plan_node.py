@@ -92,9 +92,9 @@ def weaver():
     # matrixA = np.random.randint(63, size=(1,8))
     # matrixB = np.random.randint(63, size=(1,8))
     # matrixC = np.random.randint(63, size=(8,2))
-    matrixA = np.random.rand(1, 100000)
-    matrixB = np.random.rand(1, 100000)
-    matrixC = np.random.rand(100000, 20)
+    matrixA = np.random.rand(1, 1000)
+    matrixB = np.random.rand(1, 1000)
+    matrixC = np.random.rand(1000, 2)
 
 
     print("\n-------------------Test Report:-------------------")
@@ -124,6 +124,8 @@ def weaver():
     max_element_num, split_num = batch_scheme[0]
     print("Element num in one vector: ", + max_element_num)
     print("Split num: ", + split_num)
+    print(myBatchPlan.encode_slot_mem)
+    print(myBatchPlan.encode_sign_bits)
     # myBatchPlan.printBatchPlan()
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")

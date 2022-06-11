@@ -34,8 +34,9 @@ def encrypt_decrypt():
     encrypter.generate_key()
     myBatchPlan.setEncrypter()
     encrypted_row_vec = myBatchPlan.encrypt(matrixA, batch_scheme[0], encrypter.public_key)
-    print("Encrypted result:")
-    print(encrypted_row_vec)
+    # print("Encrypted result:")
+    # print(encrypted_row_vec)
+    myBatchPlan.encrypter.gpuBatchDecrypt(encrypted_row_vec, encrypter.privacy_key)
 
 
 encrypt_decrypt()
