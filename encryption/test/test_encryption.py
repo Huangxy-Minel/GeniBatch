@@ -3,6 +3,7 @@ from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPla
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
 from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption
+from federatedml.secureprotol.fate_paillier import PaillierKeypair, PaillierPublicKey, PaillierPrivateKey
 
 from federatedml.secureprotol import PaillierEncrypt
 from federatedml.util.fixpoint_solver import FixedPointEncoder
@@ -10,8 +11,8 @@ from federatedml.util.fixpoint_solver import FixedPointEncoder
 def encrypt_decrypt():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
-    matrixA = np.random.uniform(-1, 1, (1, 20))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (20, 1))     # plaintext
+    matrixA = np.random.uniform(-1, 1, (1, 100))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (100, 1))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
@@ -29,14 +30,13 @@ def encrypt_decrypt():
     print("\n-------------------Encryption:-------------------")
     print("Plaintext: ")
     print(matrixA)
-    fix_encoder = FixedPointEncoder(2**64)
     encrypter = PaillierEncrypt()
     encrypter.generate_key()
     myBatchPlan.setEncrypter()
     encrypted_row_vec = myBatchPlan.encrypt(matrixA, batch_scheme[0], encrypter.public_key)
-    # print("Encrypted result:")
-    # print(encrypted_row_vec)
-    myBatchPlan.encrypter.gpuBatchDecrypt(encrypted_row_vec, encrypter.privacy_key)
+    decrypted_vec = myBatchPlan.decrypt(encrypted_row_vec, encrypter.privacy_key)
+    print("After decryption: ")
+    print(decrypted_vec)
 
 
 encrypt_decrypt()

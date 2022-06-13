@@ -88,7 +88,7 @@ def matrix_mul():
 
 def weaver():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=16)
     # matrixA = np.random.randint(63, size=(1,8))
     # matrixB = np.random.randint(63, size=(1,8))
     # matrixC = np.random.randint(63, size=(8,2))

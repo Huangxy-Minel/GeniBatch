@@ -4,7 +4,7 @@ import copy, math
 from federatedml.FATE_Engine.python.BatchPlan.planner.plan_node import PlanNode
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
-from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption
+from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption, BatchEncryptedNumber
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store
 
 class BatchPlan(object):
@@ -259,12 +259,10 @@ class BatchPlan(object):
             raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
 
     def setEncoder(self, max_value):
-        self.encoder = BatchEncoder(max_value, self.element_mem_size, self.encode_slot_mem, self.encode_sign_bits)
+        self.encoder = BatchEncoder(max_value, self.element_mem_size, self.encode_slot_mem, self.encode_sign_bits, self.batch_scheme[0][0])
 
     def setEncrypter(self, public_key=None, private_key=None):
-        if self.encoder == None:
-            raise NotImplementedError("Please set encoder before encryption!")
-        self.encrypter = BatchEncryption(self.encoder, public_key, private_key)
+        self.encrypter = BatchEncryption(public_key, private_key)
 
     def encode(self, row_vec):
         '''Batch encode given row vector; row_vec should be 2-D array'''
@@ -279,14 +277,27 @@ class BatchPlan(object):
                 row_vec: a 2-D array. shape: (1, length of this row vector)
                 row_batch_scheme: the batch scheme (max_element_num, split_num) of this row vector
             Return:
-                a list of PaillierEncryptedNumber
+                a BatchEncryptedNumber, which contains a PEN_store, stores a list of PaillierEncryptedNumber in GPU
         '''
         # make up zeros
         max_element_num, split_num = row_batch_scheme
         col_num = row_vec.shape[1]
         row_vec = np.hstack((row_vec, np.zeros((1, max_element_num * split_num - col_num))))
         row_vec = row_vec.reshape(split_num, max_element_num)
-        return self.encrypter.gpuBatchEncrypt(row_vec, pub_key)
+        # encode
+        encode_number_list = [self.encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
+        return self.encrypter.gpuBatchEncrypt(encode_number_list, self.encoder.scaling, self.encoder.size, pub_key)
+
+    def decrypt(self, encrypted_data:BatchEncryptedNumber, private_key=None):
+        '''
+            Decrypt and decode given BatchEncryptedNumber
+            Input: 
+                encrypted_data: BatchEncryptedNumber, which contains pen_store and current scaling, size for each batch number
+                private_key: used in decrypt
+        '''
+        batch_encoding_values = self.encrypter.gpuBatchDecrypt(encrypted_data, private_key)
+        plaintext_list = [self.encoder.batchDecode(ben, encrypted_data.scaling, encrypted_data.size) for ben in batch_encoding_values]
+        return np.array(plaintext_list)
 
 
     def serialExec(self):
