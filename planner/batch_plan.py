@@ -201,7 +201,7 @@ class BatchPlan(object):
             if self.merge_nodes == []:
                 for root in self.root_nodes:
                     self.encode_sign_bits = root.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
-                    self.encode_slot_mem = root.max_slot_size + self.add_times # the final memory for each slot
+                    self.encode_slot_mem = root.max_slot_size + self.add_times      # the final memory for each slot
                     max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
                     if self.vector_size > max_element_num:
                         split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num

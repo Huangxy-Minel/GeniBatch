@@ -1,6 +1,7 @@
 import numpy as np
 import copy, math
 from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryptedNumber
+from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store
 
 class PlanNode(object):
     '''
@@ -277,30 +278,43 @@ class PlanNode(object):
                 scaling = self.batch_data.scaling
             else:
                 raise NotImplementedError("First child of each node must be encrypted!")
-            # print("ADD inputs")
-            # print(self.children[0].getBatchData())
-            # print(self.children[1].getBatchData())
             for i in range(1, self.size):
                 # encode firstly
                 other_batch_data = [encoder.batchEncode(split_row_vec) for split_row_vec in self.children[i].getBatchData()] # a list of BatchEncoderNumber
+                if scaling < encoder.scaling:
+                    other_batch_data = [v * (encoder.scaling / scaling) for v in other_batch_data]
+                elif scaling > encoder.scaling:
+                    raise NotImplementedError("The scaling of ADD inputs is invalid!")
                 self.batch_data.value = self.batch_data.value.add_with_big_integer(other_batch_data)            # PEN_store + a list of big integer
             # print(self.batch_data)
         elif self.operator == "MUL":
-            self.batch_data = copy.deepcopy(self.children[0].getBatchData())
-            # print("MUL inputs")
-            # print(self.children[0].getBatchData())
-            # print(self.children[1].getBatchData())
+            '''Encrypted vec is a PEN_store, the logic is: copy the PEN_store for split_num times, then mul with the coefficients which corresponds to it'''
+            # copy encrypted vec
+            batch_encrypted_vec = self.children[0].getBatchData()
+            pen_list = batch_encrypted_vec.value.get_PEN_ndarray()
+            batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]
             for i in range(1, self.size):
+                # update scaling
+                batch_encrypted_vec.scaling *= batch_encrypted_vec.scaling
+                # mul with coefficients
                 other_batch_data = self.children[i].getBatchData()
-                for split_idx in range(len(other_batch_data)):
-                    self.batch_data[split_idx] = self.batch_data[split_idx] * other_batch_data[split_idx]
-                    self.batch_data[split_idx] = sum(self.batch_data[split_idx])
-                self.batch_data = sum(self.batch_data)
-            # print("Mul output " + str(self.batch_data))
+                for split_idx in range(encoder.size):
+                    coefficients = [v[encoder.size - split_idx - 1] for v in other_batch_data]
+                    coefficients = encoder.scalarEncode(coefficients)       # encode
+                    print(coefficients)
+                    batch_data[split_idx] = PEN_store.set_from_PaillierEncryptedNumber(batch_data[split_idx])   # transform to PEN_store
+                    batch_data[split_idx] = batch_data[split_idx].mul_with_big_integer(coefficients)
+                    batch_data[split_idx] = batch_data[split_idx].sum()
+                # shift sum
+                self.batch_data = batch_encrypted_vec
+                self.batch_data.value = batch_data[0]
+                for split_idx in range(1, encoder.size):
+                    self.batch_data.value = self.batch_data.value.mul_with_big_integer(int(pow(2, encoder.slot_mem_size)))
+                    self.batch_data.value = self.batch_data.value + batch_data[split_idx]
         elif self.operator == "Merge":
-            self.batch_data = np.zeros(self.shape)
-            for i in range(0, self.size):
-                self.batch_data[0][i] = self.children[i].getBatchData()
+            self.batch_data = []
+            for i in range(self.size):
+                self.batch_data.append(self.children[i].getBatchData())
         else: 
             raise NotImplementedError("Invalid operator node!")
         self.state = 1

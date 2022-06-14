@@ -10,4 +10,7 @@ def encode():
     batch_decode_number = encoder.batchDecode(batch_encode_number)
     print("After batch decoding: " + str(batch_decode_number))
 
+def add():
+    
+
 encode()
