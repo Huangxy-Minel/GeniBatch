@@ -48,7 +48,6 @@ class BatchPlan(object):
         self.vector_mem_size = vector_mem_size      # represents memory size of each vector. default: 1024bits
         self.element_mem_size = element_mem_size    # the memory size of one slot number
         self.vector_size = 0                        # num of elements in each node
-        self.mul_flag = False                       # record if current batch plan includes mul operations or not
         self.merge_nodes = []                       # record merge nodes, since only node under merge nodes need be splitted
         self.mul_times = 0
         self.add_times = 0
@@ -176,7 +175,6 @@ class BatchPlan(object):
         # self.opera_nodes_list.append(mul_nodes_list)
         # self.opera_nodes_list.append(merge_nodes_list)
         self.merge_nodes = merge_nodes_list
-        self.mul_flag = True
         self.mul_times += 1
         
 
@@ -187,9 +185,9 @@ class BatchPlan(object):
             Split nodes below Merge. Any nodes over Merge will not use batch-wise encryption
         '''
         if self.batch_scheme == []:
+            # handle BatchPlan which contains MUL operator
             for merge_node in self.merge_nodes:
-                if self.mul_flag:
-                    merge_node.max_slot_size += math.ceil(math.log2(self.vector_size))      # elements will sum up in matrix mul
+                merge_node.max_slot_size += math.ceil(math.log2(self.vector_size))      # elements will sum up in matrix mul
                 self.encode_sign_bits = merge_node.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
                 self.encode_slot_mem = merge_node.max_slot_size + merge_node.max_slot_size * self.mul_times + self.add_times + self.mul_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
                 max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
@@ -198,12 +196,30 @@ class BatchPlan(object):
                     # merge_node.splitTree(max_element_num, split_num)
                     merge_node.recursionUpdateDataIdx(max_element_num, split_num)
                     self.batch_scheme.append((max_element_num, split_num))
+
+            # handle BatchPlan which only contains ADD operator
+            if self.merge_nodes == []:
+                for root in self.root_nodes:
+                    self.encode_sign_bits = root.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
+                    self.encode_slot_mem = root.max_slot_size + self.add_times # the final memory for each slot
+                    max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
+                    if self.vector_size > max_element_num:
+                        split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
+                        # root.splitTree(max_element_num, split_num)
+                        root.recursionUpdateDataIdx(max_element_num, split_num)
+                        self.batch_scheme.append((max_element_num, split_num))
         else:
-            if len(self.batch_scheme) != len(self.merge_nodes):
-                raise NotImplementedError("The length of batch_scheme is not equal to the num of merge nodes!")
-            for merge_node, (max_element_num, split_num) in zip(self.merge_nodes, self.batch_scheme):
-                # merge_node.splitTree(max_element_num, split_num)
-                merge_node.recursionUpdateDataIdx(max_element_num, split_num)
+            if self.merge_nodes == []:
+                if len(self.batch_scheme) != len(self.root_nodes):
+                    raise NotImplementedError("The length of batch_scheme is not equal to the num of root nodes!")
+                for root_node, (max_element_num, split_num) in zip(self.root_nodes, self.batch_scheme):
+                    root_node.recursionUpdateDataIdx(max_element_num, split_num)
+            else:
+                if len(self.batch_scheme) != len(self.merge_nodes):
+                    raise NotImplementedError("The length of batch_scheme is not equal to the num of merge nodes!")
+                for merge_node, (max_element_num, split_num) in zip(self.merge_nodes, self.batch_scheme):
+                    # merge_node.splitTree(max_element_num, split_num)
+                    merge_node.recursionUpdateDataIdx(max_element_num, split_num)
         self.setEncoder(1)
         self.traverseDAG()      # update node vectors
 
@@ -248,10 +264,10 @@ class BatchPlan(object):
             batch_data = [self.data_storage.getDataFromIdx(split_data_idx) for split_data_idx in vec_node.getDataIdxList()]
             vec_node.setBatchData(batch_data)
     
-    def assignEncryptedVector(self, matrix_id, row_id, encrypted_row_vector):
+    def assignEncryptedVector(self, matrix_id, row_id, encrypted_row_vector:BatchEncryptedNumber):
         '''
             Assign encrypted vector data to vector nodes
-            Note: encrypted_row_vector should be [PaillierEncryptedNumber, PaillierEncryptedNumber, ...]; each PaillierEncryptedNumber represents a splitted of original vector (batch encrypted number)
+            Note: encrypted_row_vector should be BatchEncryptedNumber, its value contains [PaillierEncryptedNumber, PaillierEncryptedNumber, ...]; each PaillierEncryptedNumber represents a splitted of original vector (batch encrypted number)
         '''
         if (matrix_id, row_id) in self.encrypted_vector_nodes.keys():
             self.encrypted_vector_nodes[(matrix_id, row_id)].setBatchData(encrypted_row_vector)
@@ -298,7 +314,6 @@ class BatchPlan(object):
         batch_encoding_values = self.encrypter.gpuBatchDecrypt(encrypted_data, private_key)
         plaintext_list = [self.encoder.batchDecode(ben, encrypted_data.scaling, encrypted_data.size) for ben in batch_encoding_values]
         return np.array(plaintext_list)
-
 
     def serialExec(self):
         '''Serial execution'''
