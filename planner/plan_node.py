@@ -1,6 +1,6 @@
-from heapq import merge
 import numpy as np
 import copy, math
+from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryptedNumber
 
 class PlanNode(object):
     '''
@@ -225,7 +225,11 @@ class PlanNode(object):
 
     def serialExec(self):
         '''
-        Execute node only base on its children, not recursively
+            Execute node only base on its children, not recursively
+            The batch data of each node: 
+                encrypted vector: a list of PaillierEncryptedNumber
+                unencrypted vector: a list of row vector, which represents an unencoded BatchEncodeNumber
+            Therefore, this func will firstly transform unencrypted vector to a list of BatchEncodeNumber, then conduct evaluation
         '''
         if self.operator == "ADD":
             self.batch_data = copy.deepcopy(self.children[0].getBatchData())
@@ -236,6 +240,50 @@ class PlanNode(object):
                 other_batch_data = self.children[i].getBatchData()
                 for split_idx in range(len(other_batch_data)):
                     self.batch_data[split_idx] = self.batch_data[split_idx] + other_batch_data[split_idx]
+            # print(self.batch_data)
+        elif self.operator == "MUL":
+            self.batch_data = copy.deepcopy(self.children[0].getBatchData())
+            # print("MUL inputs")
+            # print(self.children[0].getBatchData())
+            # print(self.children[1].getBatchData())
+            for i in range(1, self.size):
+                other_batch_data = self.children[i].getBatchData()
+                for split_idx in range(len(other_batch_data)):
+                    self.batch_data[split_idx] = self.batch_data[split_idx] * other_batch_data[split_idx]
+                    self.batch_data[split_idx] = sum(self.batch_data[split_idx])
+                self.batch_data = sum(self.batch_data)
+            # print("Mul output " + str(self.batch_data))
+        elif self.operator == "Merge":
+            self.batch_data = np.zeros(self.shape)
+            for i in range(0, self.size):
+                self.batch_data[0][i] = self.children[i].getBatchData()
+        else: 
+            raise NotImplementedError("Invalid operator node!")
+        self.state = 1
+        return self.batch_data
+
+    def parallelExec(self, encoder):
+        '''
+            Execute node only base on its children, not recursively
+            The batch data of each node: 
+                encrypted vector: PEN_store. store the pointer to GPUs.
+                unencrypted vector: a list of row vector, which represents an unencoded BatchEncodeNumber
+            Therefore, this func will firstly transform unencrypted vector to a list of BatchEncodeNumber, then conduct evaluation
+        '''
+        if self.operator == "ADD":
+            self.batch_data = self.children[0].getBatchData()
+            '''Init scaling'''
+            if isinstance(self.batch_data, BatchEncryptedNumber):
+                scaling = self.batch_data.scaling
+            else:
+                raise NotImplementedError("First child of each node must be encrypted!")
+            # print("ADD inputs")
+            # print(self.children[0].getBatchData())
+            # print(self.children[1].getBatchData())
+            for i in range(1, self.size):
+                # encode firstly
+                other_batch_data = [encoder.batchEncode(split_row_vec) for split_row_vec in self.children[i].getBatchData()] # a list of BatchEncoderNumber
+                self.batch_data.value = self.batch_data.value.add_with_big_integer(other_batch_data)            # PEN_store + a list of big integer
             # print(self.batch_data)
         elif self.operator == "MUL":
             self.batch_data = copy.deepcopy(self.children[0].getBatchData())

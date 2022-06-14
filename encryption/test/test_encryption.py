@@ -59,16 +59,31 @@ def encrypted_add():
 
     '''Encrypt'''
     print("\n-------------------Encryption:-------------------")
-    print("Plaintext: ")
-    print(matrixA)
     encrypter = PaillierEncrypt()
     encrypter.generate_key()
     myBatchPlan.setEncrypter()
     encrypted_row_vec = myBatchPlan.encrypt(matrixA, batch_scheme[0], encrypter.public_key)
-    '''Decrypt'''
-    decrypted_vec = myBatchPlan.decrypt(encrypted_row_vec, encrypter.privacy_key)
-    print("After decryption: ")
-    print(decrypted_vec)
 
+    '''Assign encrypted vector'''
+    myBatchPlan.assignEncryptedVector(0, 0, encrypted_row_vec)
+
+    print("\n-------------------Begin to exec Batch Plan.-------------------")
+    outputs = myBatchPlan.parallelExec()
+    '''Decrypt'''
+    outputs = [myBatchPlan.decrypt(output, encrypter.privacy_key) for output in outputs]
+    row_num, col_num = myBatchPlan.matrix_shape
+    output_matrix = np.zeros(myBatchPlan.matrix_shape)
+    for row_id in range(row_num):
+        output_matrix[row_id, :] = outputs[row_id][0:col_num]
+    print("\n-------------------Batch Plan output:-------------------")
+    print(output_matrix)
+    print("\n-------------------Numpy output:-------------------")
+    result = matrixA + matrixB
+    print(result)
+    if np.allclose(output_matrix, result):
+        print("\n-------------------Test Pass!-------------------")
+    else:
+        print("\n-------------------Test Fail-------------------")
+        print(output_matrix == result)
 
 encrypted_add()

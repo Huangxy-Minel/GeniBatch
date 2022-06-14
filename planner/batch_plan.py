@@ -312,11 +312,13 @@ class BatchPlan(object):
                 private_key: used in decrypt
         '''
         batch_encoding_values = self.encrypter.gpuBatchDecrypt(encrypted_data, private_key)
-        plaintext_list = [self.encoder.batchDecode(ben, encrypted_data.scaling, encrypted_data.size) for ben in batch_encoding_values]
-        return np.array(plaintext_list)
+        plaintext_list = np.array([self.encoder.batchDecode(ben, encrypted_data.scaling, encrypted_data.size) for ben in batch_encoding_values])
+        # reshape
+        plaintext_row_vec = plaintext_list.reshape(plaintext_list.size)
+        return plaintext_row_vec
 
     def serialExec(self):
-        '''Serial execution'''
+        '''Serially execute each operator, from bottom of the DAG. Call it when use CPUs'''
         self.assignVector()
         outputs = []
         # Execute from operation level 0 
@@ -328,64 +330,15 @@ class BatchPlan(object):
         return outputs
 
     def parallelExec(self):
-        '''Parallel execution'''
+        '''Parallel execute each operator, from bottom of the DAG. Call it when use GPUs'''
         self.assignVector()
         outputs = []
         for one_level_opera_nodes in self.opera_nodes_list:
-            self.parallelExecOneLevel(one_level_opera_nodes)
+            for node in one_level_opera_nodes:
+                node.parallelExec(self.encoder)
         for root in self.root_nodes:
             outputs.append(root.getBatchData())
         return outputs
-
-    def parallelExecOneLevel(self, one_level_opera_nodes):
-        '''Current support 2 children'''
-        nodes_type = one_level_opera_nodes[0].operator   # get node type
-        print(nodes_type)
-        if nodes_type == "ADD":
-            '''make up inputs'''
-            A_list = []
-            B_list = []
-            for node in one_level_opera_nodes:
-                A_list.extend(node.children[0].getBatchData())
-                # TODO: encode 
-                B_list.extend(node.children[1].getBatchData())
-            # A_list = PEN_store.set_from_PaillierEncryptedNumber(A_list)
-            '''calculation'''
-            # res = A_list + B_list
-            # res = res.get_PEN_ndarray()
-            res = np.array(A_list) + np.array(B_list)
-            slot_start_idx = 0
-            for node in one_level_opera_nodes:
-                node.setBatchData(res[slot_start_idx:slot_start_idx + self.batch_scheme[0][0]])
-                slot_start_idx += self.batch_scheme[0][0]
-        elif nodes_type == "MUL":
-            '''make up inputs'''
-            A_list = []
-            B_list = []
-            for node in one_level_opera_nodes:
-                A_list.extend(node.children[0].getBatchData())
-                # TODO: encode 
-                B_list.extend(node.children[1].getBatchData())
-            # A_list = PEN_store.set_from_PaillierEncryptedNumber(A_list)
-            # res = A_list * B_list
-            # res = res.get_PEN_ndarray()
-            '''calculation'''
-            res = np.array(A_list) * np.array(B_list)
-            slot_start_idx = 0
-            for node in one_level_opera_nodes:
-                sum_list = res[slot_start_idx:slot_start_idx + self.batch_scheme[0][0]]
-                slot_start_idx += self.batch_scheme[0][0]
-                # sum_list = PEN_store.set_from_PaillierEncryptedNumber(sum_list)
-                # sum_list.accumulate_sum()
-                # node.setBatchData(sum_list.get_PEN_ndarray())
-                node.setBatchData([np.sum(sum_list)])
-        elif nodes_type == "Merge":
-            for node in one_level_opera_nodes:
-                batch_data = []
-                for i in range(0, node.size):
-                    batch_data.append(node.children[i].getBatchData())
-                print(batch_data)
-                node.setBatchData(np.array(batch_data))
 
 
     def printBatchPlan(self):
@@ -404,12 +357,6 @@ class BatchPlan(object):
             print("\n")
             level += 1
 
-    def execBatchPlan(self):
-        '''Use to debug'''
-        outputs = []
-        for root in self.root_nodes:
-            outputs.append(root.execNode())
-        return outputs
 
 
         
