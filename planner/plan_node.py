@@ -290,9 +290,9 @@ class PlanNode(object):
         elif self.operator == "MUL":
             '''Encrypted vec is a PEN_store, the logic is: copy the PEN_store for split_num times, then mul with the coefficients which corresponds to it'''
             # copy encrypted vec
-            batch_encrypted_vec = self.children[0].getBatchData()
-            pen_list = batch_encrypted_vec.value.get_PEN_ndarray()
-            batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]
+            batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
+            pen_list = batch_encrypted_vec.value.get_PEN_ndarray()      # a list of PaillierEncryptedNumber
+            batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]     # copy
             for i in range(1, self.size):
                 # update scaling
                 batch_encrypted_vec.scaling *= batch_encrypted_vec.scaling
