@@ -290,7 +290,7 @@ class PlanNode(object):
         elif self.operator == "MUL":
             '''Encrypted vec is a PEN_store, the logic is: copy the PEN_store for split_num times, then mul with the coefficients which corresponds to it'''
             # copy encrypted vec
-            batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
+            batch_encrypted_vec = copy.deepcopy(self.children[0].getBatchData())       # BatchEncryptedNumber
             pen_list = batch_encrypted_vec.value.get_PEN_ndarray()      # a list of PaillierEncryptedNumber
             batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]     # copy
             for i in range(1, self.size):
@@ -299,18 +299,17 @@ class PlanNode(object):
                 # mul with coefficients
                 other_batch_data = self.children[i].getBatchData()
                 for split_idx in range(encoder.size):
-                    coefficients = [v[encoder.size - split_idx - 1] for v in other_batch_data]
+                    coefficients = [v[split_idx] for v in other_batch_data]
                     coefficients = encoder.scalarEncode(coefficients)       # encode
-                    print(coefficients)
                     batch_data[split_idx] = PEN_store.set_from_PaillierEncryptedNumber(batch_data[split_idx])   # transform to PEN_store
                     batch_data[split_idx] = batch_data[split_idx].mul_with_big_integer(coefficients)
                     batch_data[split_idx] = batch_data[split_idx].sum()
                 # shift sum
-                self.batch_data = batch_encrypted_vec
-                self.batch_data.value = batch_data[0]
-                for split_idx in range(1, encoder.size):
-                    self.batch_data.value = self.batch_data.value.mul_with_big_integer(int(pow(2, encoder.slot_mem_size)))
-                    self.batch_data.value = self.batch_data.value + batch_data[split_idx]
+                self.batch_data = [BatchEncryptedNumber(batch_data[num], batch_encrypted_vec.scaling, batch_encrypted_vec.size) for num in range(encoder.size)]
+                # self.batch_data.value = batch_data[0]
+                # for split_idx in range(1, encoder.size):
+                #     self.batch_data.value = self.batch_data.value.mul_with_big_integer(int(pow(2, encoder.slot_mem_size)))
+                #     self.batch_data.value = self.batch_data.value + batch_data[split_idx]
         elif self.operator == "Merge":
             self.batch_data = []
             for i in range(self.size):

@@ -90,7 +90,7 @@ def encrypted_mul():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
     matrixA = np.random.uniform(-1, 1, (1, 100))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (100, 1))     # plaintext
+    matrixB = np.random.uniform(-1, 1, (100, 100))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
@@ -117,12 +117,19 @@ def encrypted_mul():
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")
     outputs = myBatchPlan.parallelExec()
-    '''Decrypt'''
+    '''Decrypt & shift sum'''
+    res = []
     for output in outputs:
-        res = [myBatchPlan.decrypt(v, encrypter.privacy_key) for v in output]
-        print(res)
-    outputs = [v[0] for v in res]
-    print(outputs)
+        # each output represent the output of one root node
+        row_vec = []
+        for element in output:
+            real_res = 0
+            for batch_encrypted_number_idx in range(len(element)):
+                temp = myBatchPlan.decrypt(element[batch_encrypted_number_idx], encrypter.privacy_key)
+                real_res += temp[batch_encrypted_number_idx]
+            row_vec.append(real_res)
+        res.append(row_vec)
+    outputs = res
 
     row_num, col_num = myBatchPlan.matrix_shape
     output_matrix = np.zeros(myBatchPlan.matrix_shape)
@@ -131,12 +138,42 @@ def encrypted_mul():
     print("\n-------------------Batch Plan output:-------------------")
     print(output_matrix)
     print("\n-------------------Numpy output:-------------------")
-    result = matrixA + matrixB
+    result = matrixA.dot(matrixB)
     print(result)
     if np.allclose(output_matrix, result):
         print("\n-------------------Test Pass!-------------------")
     else:
         print("\n-------------------Test Fail-------------------")
         print(output_matrix == result)
+
+def scalar_mul():
+    encoder = BatchEncoder(1, 64, 256, 64, 3)        # encode [-1, 1] using 64 bits
+    row_vec_A = np.random.uniform(-1, 0, 3)
+    row_vec_B = np.random.uniform(-1, 0, 3)
+    row_vec_A = np.array([-1, -1, -1])
+    print("----------------Original vector:----------------")
+    print(row_vec_A)
+    # print(row_vec_B)
+    print("----------------Encode:----------------")
+    batch_encode_A = encoder.batchEncode(row_vec_A)
+    # scalar_encode_B = encoder.scalarEncode(row_vec_B)
+    print("encode A: ", '0x%x'%batch_encode_A)
+    # print("scalar B: ")
+    # for scalar in scalar_encode_B:
+    #     print('0x%x'%scalar)
+    print("----------------Encrypt:----------------")
+    key_generator = PaillierEncrypt()
+    key_generator.generate_key()
+    encrypter = BatchEncryption()
+    encrypted_A = encrypter.gpuBatchEncrypt([batch_encode_A], encoder.scaling, encoder.size, key_generator.public_key)
+    # shift
+    encrypted_A.value = encrypted_A.value.mul_with_big_integer(int(pow(2, encoder.slot_mem_size)))
+    encrypted_A.value = encrypted_A.value.mul_with_big_integer(int(pow(2, encoder.slot_mem_size)))
+
+    print("----------------Decrypt:----------------")
+    decrypted_A = encrypter.gpuBatchDecrypt(encrypted_A, key_generator.privacy_key)
+    decrypted_A[0] = decrypted_A[0] >> encoder.slot_mem_size
+    decrypted_A[0] = decrypted_A[0] >> encoder.slot_mem_size
+    print("encode A: ", '0x%x'%decrypted_A[0])
 
 encrypted_mul()
