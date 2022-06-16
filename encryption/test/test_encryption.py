@@ -89,8 +89,8 @@ def encrypted_add():
 def encrypted_mul():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
-    matrixA = np.random.uniform(-1, 1, (1, 100))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (100, 100))     # plaintext
+    matrixA = np.random.uniform(-1, 1, (1, 3000000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (3000000, 1))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
@@ -104,6 +104,7 @@ def encrypted_mul():
     print("Element num in one vector: ", + max_element_num)
     print("Split num: ", + split_num)
     print("Memory of each slot: ", + myBatchPlan.encoder.slot_mem_size)
+    print("Memory of extra sign bits: ", + myBatchPlan.encoder.sign_bits)
 
     '''Encrypt'''
     print("\n-------------------Encryption:-------------------")
