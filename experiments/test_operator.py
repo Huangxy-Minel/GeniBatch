@@ -90,8 +90,8 @@ def test_matrix_operation():
     # encode
     row_vec = row_vec_A.reshape(split_num, max_element_num)
     encode_number_list_A = [encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
-    row_vec = row_vec_B.reshape(split_num, max_element_num)
-    encode_number_list_B = [encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
+    # row_vec = row_vec_B.reshape(split_num, max_element_num)
+    # encode_number_list_B = [encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
     # # encrypt
     # pen_list_A = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v), 0) for v in encode_number_list_A]
     # pen_list_B = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v), 0) for v in encode_number_list_B]
@@ -136,20 +136,32 @@ def test_matrix_operation():
     stop_time = time.time()
     print("Duration: ", stop_time - start_time)
     print("\n-------------------GPU with BatchEncode:-------------------")
-    pen_list = batch_encrypted_number_A.value.get_PEN_ndarray()      # a list of PaillierEncryptedNumber
-    batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]     # copy
-    row_vec = row_vec_B.reshape(split_num, max_element_num)
+    start_time = time.time()
     coefficients = []
+    row_vec = row_vec_B.reshape(split_num, max_element_num)
     for split_idx in range(max_element_num):
         coefficient = [v[split_idx] for v in row_vec]
         coefficient = encoder.scalarEncode(coefficient)       # encode
         coefficients.append(coefficient)
+    stop_time = time.time()
+    print("Encode duration: ", stop_time - start_time)
+
+    start_time = time.time()
+    pen_list = batch_encrypted_number_A.value.get_PEN_ndarray()      # a list of PaillierEncryptedNumber
+    batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]     # copy
+    stop_time = time.time()
+    print("Copy duration: ", stop_time - start_time)
     start_time = time.time()
     for split_idx in range(max_element_num):
         batch_data[split_idx] = PEN_store.set_from_PaillierEncryptedNumber(batch_data[split_idx])   # transform to PEN_store
+    stop_time = time.time()
+    print("p2c duration: ", stop_time - start_time)
+
+    start_time = time.time()
+    for split_idx in range(max_element_num):
         batch_data[split_idx] = batch_data[split_idx].mul_with_big_integer(coefficients[split_idx])
         batch_data[split_idx] = batch_data[split_idx].sum()
     stop_time = time.time()
-    print("Duration: ", stop_time - start_time)
+    print("Evaluation duration: ", stop_time - start_time)
 
 test_matrix_operation()

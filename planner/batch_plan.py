@@ -188,8 +188,11 @@ class BatchPlan(object):
             # handle BatchPlan which contains MUL operator
             for merge_node in self.merge_nodes:
                 merge_node.max_slot_size += math.ceil(math.log2(self.vector_size))      # elements will sum up in matrix mul
+                merge_node.max_slot_size += 8 - merge_node.max_slot_size % 8            # transform to multiple of 8
                 self.encode_sign_bits = merge_node.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
+                self.encode_sign_bits += 8 - self.encode_sign_bits % 8
                 self.encode_slot_mem = merge_node.max_slot_size + merge_node.max_slot_size * self.mul_times + self.add_times + self.mul_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
+                self.encode_slot_mem += 8 - self.encode_slot_mem % 8
                 max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
                 if self.vector_size > max_element_num:
                     split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
