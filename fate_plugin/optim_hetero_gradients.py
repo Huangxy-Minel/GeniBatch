@@ -6,7 +6,7 @@ class HeteroGradient(object):
     @staticmethod
     def __apply_cal_gradient_hp(data, fixed_point_encoder):
         fore_gradient = data[1]
-        feature = np.array(data[0])
+        feature = np.array([v.features for v in data[0]])
         if fixed_point_encoder:
             feature = fixed_point_encoder.encode(feature)
         LOGGER.debug(f"feature shape: {feature.shape}")
