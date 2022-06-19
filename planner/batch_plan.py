@@ -57,6 +57,7 @@ class BatchPlan(object):
         self.batch_scheme = []                      # list of (max_element_num. split_num). Each element represents the batch plan of a given root node
         '''Use for encoder'''
         self.encoder = None
+        self.max_value = 0
         self.encode_slot_mem = 0
         self.encode_sign_bits = 0
         '''Use for encrypter'''

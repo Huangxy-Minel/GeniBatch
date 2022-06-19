@@ -1,11 +1,13 @@
 import numpy as np
 import time
 
+from threading import Thread
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store, PEN_store
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_engine import fp_p2c_big_integer
 
-class BatchEncryptedNumber(object):
+class BatchEncryptedNumber(Thread):
     def __init__(self, value, scaling, size):
+        super(BatchEncryptedNumber, self).__init__()
         self.value = value          # store the value of all encrypted BatchEncodeNumber: PEN_store
         self.scaling = scaling
         self.size = size

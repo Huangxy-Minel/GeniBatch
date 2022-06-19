@@ -11,10 +11,26 @@ from federatedml.secureprotol import PaillierEncrypt
 from federatedml.secureprotol.fixedpoint import FixedPointNumber
 
 import multiprocessing
-from joblib import Parallel, delayed
+from threading import Thread
 
 # N_JOBS = multiprocessing.cpu_count()
 N_JOBS = 10
+
+class MyThread(Thread):
+    def __init__(self, func, args):
+        super(MyThread, self).__init__()
+        self.func = func
+        self.args = args
+
+    def run(self):
+        temp = self.func(self.args)
+        self.result = temp.sum()
+
+    def get_result(self):
+        try:
+            return self.result
+        except Exception:
+            return None
 
 def test_encryption():
     row_vec_A = np.random.uniform(-1, 1, 3000000)
@@ -158,9 +174,15 @@ def test_matrix_operation():
     print("p2c duration: ", stop_time - start_time)
 
     start_time = time.time()
+    threads = []
     for split_idx in range(max_element_num):
         batch_data[split_idx] = batch_data[split_idx].mul_with_big_integer(coefficients[split_idx])
         batch_data[split_idx] = batch_data[split_idx].sum()
+        # threads.append(MyThread(batch_data[split_idx].mul_with_big_integer, args=(coefficients[split_idx])))
+        # threads[split_idx].start()
+    # for split_idx in range(max_element_num):
+    #     threads[split_idx].join()
+    #     batch_data[split_idx] = threads[split_idx].get_result()
     stop_time = time.time()
     print("Evaluation duration: ", stop_time - start_time)
 
