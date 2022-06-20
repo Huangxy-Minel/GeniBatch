@@ -179,7 +179,7 @@ class BatchPlan(object):
         self.mul_times += 1
         
 
-    def weave(self):
+    def weave(self, encode_para=None):
         '''
         Use to modify BatchPlan, make sure there is no overflow when executing.
         Note:
@@ -212,6 +212,7 @@ class BatchPlan(object):
                         # root.splitTree(max_element_num, split_num)
                         root.recursionUpdateDataIdx(max_element_num, split_num)
                         self.batch_scheme.append((max_element_num, split_num))
+            self.setEncoder()
         else:
             if self.merge_nodes == []:
                 if len(self.batch_scheme) != len(self.root_nodes):
@@ -224,7 +225,7 @@ class BatchPlan(object):
                 for merge_node, (max_element_num, split_num) in zip(self.merge_nodes, self.batch_scheme):
                     # merge_node.splitTree(max_element_num, split_num)
                     merge_node.recursionUpdateDataIdx(max_element_num, split_num)
-        self.setEncoder()
+            self.setEncoder(encode_para)
         self.traverseDAG()      # update node vectors
 
     def traverseDAG(self):
