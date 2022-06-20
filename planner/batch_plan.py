@@ -34,7 +34,7 @@ class BatchPlan(object):
         2. Memory optimization
     '''
     
-    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64):
+    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64, max_value=1):
         if vector_mem_size != 1024 and vector_mem_size!= 2048 and vector_mem_size != 4096:
             raise NotImplementedError("Vector memory size of batchplan should be 1024 or 2048 or 4096")
         '''Use for BatchPlan'''
@@ -57,9 +57,9 @@ class BatchPlan(object):
         self.batch_scheme = []                      # list of (max_element_num. split_num). Each element represents the batch plan of a given root node
         '''Use for encoder'''
         self.encoder = None
-        self.max_value = 0
         self.encode_slot_mem = 0
         self.encode_sign_bits = 0
+        self.max_value = 1
         '''Use for encrypter'''
         self.encrypter = None
 
@@ -224,7 +224,7 @@ class BatchPlan(object):
                 for merge_node, (max_element_num, split_num) in zip(self.merge_nodes, self.batch_scheme):
                     # merge_node.splitTree(max_element_num, split_num)
                     merge_node.recursionUpdateDataIdx(max_element_num, split_num)
-        self.setEncoder(1)
+        self.setEncoder()
         self.traverseDAG()      # update node vectors
 
     def traverseDAG(self):
@@ -278,8 +278,14 @@ class BatchPlan(object):
         else:
             raise NotImplementedError("Wrong (matrix_id, row_id, slot_start_idx)!")
 
-    def setEncoder(self, max_value):
-        self.encoder = BatchEncoder(max_value, self.element_mem_size, self.encode_slot_mem, self.encode_sign_bits, self.batch_scheme[0][0])
+    def getEncodePara(self):
+        return (self.max_value, self.element_mem_size, self.encode_slot_mem, self.encode_sign_bits)
+
+    def setEncoder(self, encode_para=None):
+        if encode_para:
+            self.max_value, self.element_mem_size, self.encode_slot_mem, self.encode_sign_bits = encode_para
+        
+        self.encoder = BatchEncoder(self.max_value, self.element_mem_size, self.encode_slot_mem, self.encode_sign_bits, self.batch_scheme[0][0])
 
     def setEncrypter(self, public_key=None, private_key=None):
         self.encrypter = BatchEncryption(public_key, private_key)
