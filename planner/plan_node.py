@@ -13,7 +13,7 @@ class PlanNode(object):
     TODO: Better encapsulation. Specify which variables are inaccessible, exp: PlanNode._operatror
     '''
 
-    def __init__(self, operator=None, batch_data=None, max_slot_size=0, encrypted_flag=False):
+    def __init__(self, operator=None, batch_data=None, max_slot_size=0, encrypted_flag=False, if_remote=False):
         '''Node properties'''
         self.operator = operator            # ADD, MUL or Merge
         self.batch_data = batch_data        # vector data of this node; type: list or just one number, according to node shape; exp: [np.array, np.array, ...] or [PEN, PEN, ...]
@@ -27,6 +27,9 @@ class PlanNode(object):
         '''Node attributes'''
         self.state = 0               # represents if the output data has been prepared or not. 0: not finished; 1: finished
         self.encrypted_flag = encrypted_flag             # represents if batch_data is encrypted or not. default: false
+        '''Use for interaction'''
+        self.if_remote = if_remote
+        
 
     @staticmethod
     def fromVector(matrix_id, vector_id, vector_len, slot_start_idx, slot_mem, encrypted_flag:bool):

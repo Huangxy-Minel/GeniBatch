@@ -64,12 +64,13 @@ class BatchPlan(object):
         self.encrypter = None
 
 
-    def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False):
+    def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False, if_remote:bool=False):
         '''
         Initialize Batch Plan from a matrix
         Input:
             matrixA: ndarray, a matrix, should be 2-D array
             encrypted_flag: represents the matrix is encrypted or not
+            if_remote: represents if the matrix should remote to other party or not
         '''
         if self.matrix_shape != None or self.root_nodes != []:
             raise NotImplementedError("This BatchPlan is not null. Don't use fromMatrix!")
@@ -79,18 +80,19 @@ class BatchPlan(object):
             matrix_id = self.data_storage.addMatrix(matrixA)
         for row_id in range(matrixA.shape[0]):
             '''Create a vector node'''     
-            new_node = PlanNode.fromVector(matrix_id, row_id, matrixA.shape[1], 0, self.element_mem_size, encrypted_flag)
+            new_node = PlanNode.fromVector(matrix_id, row_id, matrixA.shape[1], 0, self.element_mem_size, encrypted_flag, if_remote)
             # self.vector_nodes_list.append(new_node)
             self.root_nodes.append(new_node)        # each root node represents a row vector
         # self.encrypted_flag = encrypted_flag
         self.vector_size = matrixA.shape[1]
     
-    def matrixAdd(self, matrix_list:list, encrypted_flag_list:list):
+    def matrixAdd(self, matrix_list:list, encrypted_flag_list:list, if_remote:bool=False):
         '''
         Primitive for user: Matrix Add
         Input: 
             matrix_list: list of np.ndarray or list of BatchPlan; each matrix should be 2-D array
             encrypted_flag_list: bool list, represents encrypted_flag of each matrix
+            if_remote: represents if the output of this operator should remote to other party or not
         Note: 
             matrice in matrix_list can be encrypted
             if type of matrix is BatchPlan, the encrypted_flag in encrypted_flag_list is None
