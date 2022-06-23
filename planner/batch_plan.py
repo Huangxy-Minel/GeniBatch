@@ -343,7 +343,7 @@ class BatchPlan(object):
             outputs.append(root.getBatchData())
         return outputs
 
-    def parallelExec(self, transfer, role, current_suffix):
+    def parallelExec(self, transfer=None, role=None, current_suffix=None):
         '''Parallel execute each operator, from bottom of the DAG. Call it when use GPUs'''
         self.assignVector()
         outputs = []
