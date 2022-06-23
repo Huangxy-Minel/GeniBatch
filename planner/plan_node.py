@@ -22,17 +22,17 @@ class PlanNode(object):
         self.max_slot_size = max_slot_size          # represent max memory bits of each slot
         self.shape = (0,0)
         '''DAG Graph'''
-        self.children = []           # A list of children nodes
-        self.size = 0                # children num
+        self.children = []              # A list of children nodes
+        self.size = 0                   # children num
         '''Node attributes'''
-        self.state = 0               # represents if the output data has been prepared or not. 0: not finished; 1: finished
+        self.state = 0                  # represents if the output data has been prepared or not. 0: not finished; 1: finished
         self.encrypted_flag = encrypted_flag             # represents if batch_data is encrypted or not. default: false
         '''Use for interaction'''
-        self.if_remote = if_remote
+        self.if_remote = if_remote      # represents if the output of this node need to remote to other parties or not
         
 
     @staticmethod
-    def fromVector(matrix_id, vector_id, vector_len, slot_start_idx, slot_mem, encrypted_flag:bool):
+    def fromVector(matrix_id, vector_id, vector_len, slot_start_idx, slot_mem, encrypted_flag:bool, if_remote:bool=False):
         '''
         Create a node from a vector but do not set the batch data. Only allow the row vector
         Input:
@@ -44,15 +44,16 @@ class PlanNode(object):
         new_node.data_idx_list.append((matrix_id, vector_id, slot_start_idx, vector_len))
         new_node.shape = (1, vector_len)
         new_node.encrypted_flag = encrypted_flag
+        new_node.if_remote = if_remote
         return new_node
 
     @staticmethod
-    def fromOperator(operator:str):
+    def fromOperator(operator:str, if_remote:bool=False):
         '''
         Create a node from a operator (ADD, MUL or Merge)
         '''
         if operator == "ADD" or operator == "MUL" or operator == "Merge":
-            new_node = PlanNode(operator=operator)
+            new_node = PlanNode(operator=operator, if_remote=if_remote)
         else: 
             raise TypeError("Please check the operation type, just supports ADD, MUL and Merge!")
         return new_node

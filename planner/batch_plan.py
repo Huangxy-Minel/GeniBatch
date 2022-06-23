@@ -115,7 +115,7 @@ class BatchPlan(object):
         # Construct computational relationships
         add_nodes_list = []
         for row_id in range(self.matrix_shape[0]):
-            new_opera_node = PlanNode.fromOperator("ADD")
+            new_opera_node = PlanNode.fromOperator("ADD", if_remote=if_remote)
             new_opera_node.addChild(self.root_nodes[row_id])       # add one row vector of self as a child of new operator
             new_opera_node.shape = self.root_nodes[row_id].shape   # add operation does not change shape
             max_bit_list = [self.root_nodes[row_id].max_slot_size]
@@ -130,7 +130,7 @@ class BatchPlan(object):
         self.add_times += 1
         # self.opera_nodes_list.append(add_nodes_list)   # record the operation level
 
-    def matrixMul(self, matrix_list:list):
+    def matrixMul(self, matrix_list:list, if_remote:bool=False):
         '''
         Primitive for user: Matrix Mul
         Input: matrix_list: list of np.ndarray; each matrix should be 2-D array
@@ -158,7 +158,7 @@ class BatchPlan(object):
             merge_nodes_list = []
             # Construct computational relationships
             for row_id in range(self.matrix_shape[0]):
-                new_merge_node = PlanNode.fromOperator("Merge")
+                new_merge_node = PlanNode.fromOperator("Merge", if_remote=if_remote)
                 for col_id in range(BatchPlanB.matrix_shape[0]):           # for each row vector of self, it should be times for col_num of matrixB
                     new_mul_operator = PlanNode.fromOperator("MUL")     # each MUl operator just output 1 element
                     new_mul_operator.addChild(self.root_nodes[row_id])   
@@ -228,6 +228,7 @@ class BatchPlan(object):
                     # merge_node.splitTree(max_element_num, split_num)
                     merge_node.recursionUpdateDataIdx(max_element_num, split_num)
             self.setEncoder(encode_para)
+        self.setEncrypter()
         self.traverseDAG()      # update node vectors
 
     def traverseDAG(self):
@@ -342,13 +343,15 @@ class BatchPlan(object):
             outputs.append(root.getBatchData())
         return outputs
 
-    def parallelExec(self):
+    def parallelExec(self, transfer, role, current_suffix):
         '''Parallel execute each operator, from bottom of the DAG. Call it when use GPUs'''
         self.assignVector()
         outputs = []
         for one_level_opera_nodes in self.opera_nodes_list:
             for node in one_level_opera_nodes:
                 node.parallelExec(self.encoder)
+                if node.if_remote:
+                    transfer.remote(obj=(0, 0, node.batch_data), role=role, idx=-1, suffix=current_suffix)
         for root in self.root_nodes:
             outputs.append(root.getBatchData())
         return outputs
