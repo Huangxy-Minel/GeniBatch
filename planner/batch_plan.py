@@ -7,6 +7,8 @@ from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncod
 from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption, BatchEncryptedNumber
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store
 
+from federatedml.util import LOGGER
+
 class BatchPlan(object):
     '''
     version 2.1:
@@ -252,8 +254,10 @@ class BatchPlan(object):
                 self.opera_nodes_list.insert(0, opera_nodes_list)
             node_in_level = nodes_next_level
 
-    def setBatchScheme(self, batch_scheme):
-        if len(batch_scheme) != len(self.merge_nodes):
+    def setBatchScheme(self, batch_scheme, force_flag:bool=False):
+        if force_flag:
+            self.batch_scheme = batch_scheme
+        elif len(batch_scheme) != len(self.merge_nodes):
             raise NotImplementedError("The length of batch_scheme is not equal to the num of merge nodes!")
         else:
             self.batch_scheme = batch_scheme
