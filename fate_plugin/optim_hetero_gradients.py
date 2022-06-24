@@ -34,7 +34,8 @@ class HeteroGradient(object):
                     # bias_grad = np.sum(fore_gradient)
                     bias_grad = fore_gradient.sum()
                     gradient_sum = gradient_sum.cat(bias_grad, 1)
-                gradient = gradient_sum / data_count
+                gradient = gradient_sum
+                # gradient = gradient_sum / data_count
 
             # else:
             #     LOGGER.debug(f"Original_method")

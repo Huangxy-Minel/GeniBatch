@@ -89,12 +89,14 @@ def encrypted_add():
 def encrypted_mul():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
-    matrixA = np.random.uniform(-1, 1, (1, 3000000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (3000000, 1))     # plaintext
+    matrixA = np.random.uniform(-1, 1, (1, 300))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 300))
+    matrixC = np.random.uniform(-1, 1, (300, 20))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
-    myBatchPlan.matrixMul([matrixB])
+    myBatchPlan.matrixAdd([matrixB], [False])
+    myBatchPlan.matrixMul([matrixC])
     print("\n-------------------Batch Plan before weave:-------------------")
     myBatchPlan.printBatchPlan()
     print("\n-------------------Batch Plan after weave:-------------------")
@@ -139,7 +141,7 @@ def encrypted_mul():
     print("\n-------------------Batch Plan output:-------------------")
     print(output_matrix)
     print("\n-------------------Numpy output:-------------------")
-    result = matrixA.dot(matrixB)
+    result = (matrixA+matrixB).dot(matrixC)
     print(result)
     if np.allclose(output_matrix, result):
         print("\n-------------------Test Pass!-------------------")
@@ -177,4 +179,75 @@ def scalar_mul():
     decrypted_A[0] = decrypted_A[0] >> encoder.slot_mem_size
     print("encode A: ", '0x%x'%decrypted_A[0])
 
-encrypted_mul()
+def lr_procedure():
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
+    self_fore_gradient = np.random.uniform(-1, 1, (1, 300))     # ciphertext
+    host_fore_gradient = np.random.uniform(-1, 1, (1, 300))
+    self_feature = np.random.uniform(-1, 1, (300, 20))     # plaintext
+
+    '''Contruct BatchPlan'''
+    myBatchPlan.fromMatrix(self_fore_gradient, True)
+    myBatchPlan.matrixAdd([host_fore_gradient], [False])
+    fore_gradient_node = myBatchPlan.root_nodes[0]
+    myBatchPlan.matrixMul([self_feature])
+    print("\n-------------------Batch Plan before weave:-------------------")
+    myBatchPlan.printBatchPlan()
+    print("\n-------------------Batch Plan after weave:-------------------")
+    myBatchPlan.weave()
+    batch_scheme = myBatchPlan.getBatchScheme()
+    max_element_num, split_num = batch_scheme[0]
+    print("Element num in one vector: ", + max_element_num)
+    print("Split num: ", + split_num)
+    print("Memory of each slot: ", + myBatchPlan.encoder.slot_mem_size)
+    print("Memory of extra sign bits: ", + myBatchPlan.encoder.sign_bits)
+
+    '''Encrypt'''
+    print("\n-------------------Encryption:-------------------")
+    encrypter = PaillierEncrypt()
+    encrypter.generate_key()
+    myBatchPlan.setEncrypter()
+    encrypted_row_vec = myBatchPlan.encrypt(self_fore_gradient, batch_scheme[0], encrypter.public_key)
+
+    '''Assign encrypted vector'''
+    myBatchPlan.assignEncryptedVector(0, 0, encrypted_row_vec)
+
+    print("\n-------------------Begin to exec Batch Plan.-------------------")
+    outputs = myBatchPlan.parallelExec()
+    '''Decrypt & shift sum'''
+    res = []
+    for output in outputs:
+        # each output represent the output of one root node
+        row_vec = []
+        for element in output:
+            real_res = 0
+            for batch_encrypted_number_idx in range(len(element)):
+                temp = myBatchPlan.decrypt(element[batch_encrypted_number_idx], encrypter.privacy_key)
+                real_res += temp[batch_encrypted_number_idx]
+            row_vec.append(real_res)
+        res.append(row_vec)
+    outputs = res
+    '''Calculate bias'''
+    bias_middle_grad = fore_gradient_node.getBatchData()
+    bias_middle_grad.value = bias_middle_grad.value.sum()
+    bias_grad = sum(myBatchPlan.decrypt(bias_middle_grad, encrypter.privacy_key))
+
+    row_num, col_num = myBatchPlan.matrix_shape
+    output_matrix = np.zeros(myBatchPlan.matrix_shape)
+    for row_id in range(row_num):
+        output_matrix[row_id, :] = outputs[row_id][0:col_num]
+    print("\n-------------------Batch Plan output:-------------------")
+    print("unilateral_gradient: ", output_matrix)
+    print("bias gradient: ", bias_grad)
+    print("\n-------------------Numpy output:-------------------")
+    result = (self_fore_gradient+host_fore_gradient).dot(self_feature)
+    plain_bias = (self_fore_gradient+host_fore_gradient).sum()
+    print(result)
+    print(plain_bias)
+    if np.allclose(output_matrix, result):
+        print("\n-------------------Test Pass!-------------------")
+    else:
+        print("\n-------------------Test Fail-------------------")
+        print(output_matrix == result)
+
+lr_procedure()

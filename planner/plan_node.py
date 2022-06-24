@@ -295,8 +295,10 @@ class PlanNode(object):
             '''Encrypted vec is a PEN_store, the logic is: copy the PEN_store for split_num times, then mul with the coefficients which corresponds to it'''
             # copy encrypted vec
             batch_encrypted_vec = copy.deepcopy(self.children[0].getBatchData())       # BatchEncryptedNumber
-            pen_list = batch_encrypted_vec.value.get_PEN_ndarray()      # a list of PaillierEncryptedNumber
-            batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]     # copy
+            # pen_list = batch_encrypted_vec.value.get_PEN_ndarray()      # a list of PaillierEncryptedNumber
+            pen_store = batch_encrypted_vec.value
+            # batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]     # copy
+            batch_data = [pen_store.deep_copy() for _ in range(encoder.size)]     # copy
             for i in range(1, self.size):
                 # update scaling
                 batch_encrypted_vec.scaling *= batch_encrypted_vec.scaling
@@ -305,7 +307,7 @@ class PlanNode(object):
                 for split_idx in range(encoder.size):
                     coefficients = [v[split_idx] for v in other_batch_data]
                     coefficients = encoder.scalarEncode(coefficients)       # encode
-                    batch_data[split_idx] = PEN_store.set_from_PaillierEncryptedNumber(batch_data[split_idx])   # transform to PEN_store
+                    # batch_data[split_idx] = PEN_store.set_from_PaillierEncryptedNumber(batch_data[split_idx])   # transform to PEN_store
                     batch_data[split_idx] = batch_data[split_idx].mul_with_big_integer(coefficients)
                     batch_data[split_idx] = batch_data[split_idx].sum()
                 # shift sum
