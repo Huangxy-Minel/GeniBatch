@@ -34,12 +34,12 @@ class MyThread(Thread):
 
 def test_encryption():
     row_vec_A = np.random.uniform(-1, 1, 3000000)
-    row_vec_A = row_vec_A.astype(np.float64)
+    row_vec_A = row_vec_A.astype(np.float32)
     key_generator = PaillierEncrypt()
     key_generator.generate_key()
     print("\n--------------------------------------Encoding Test Report:--------------------------------------")
-    # print("\n-------------------CPU:-------------------")
-    # # print(N_JOBS)
+    print("\n-------------------CPU:-------------------")
+    # print(N_JOBS)
     # start_time = time.time()
     # # FPN_num = Parallel(n_jobs=40)(delayed(FixedPointNumber.encode)(v) for v in row_vec_A)
     # FPN_num = [FixedPointNumber.encode(v) for v in row_vec_A]
@@ -47,17 +47,22 @@ def test_encryption():
     # print("Duration: ", stop_time - start_time)
     print("\n-------------------CPU with BatchEncode:-------------------")
     start_time = time.time()
-    split_num = 1000000
-    max_element_num = 3
-    encoder = BatchEncoder(1, 64, 322, 86, 3)        # encode [-1, 1] using 8 bits
-    row_vec = row_vec_A.reshape(split_num, max_element_num)
+    max_element_num = 5
+    split_num = int(len(row_vec_A) / max_element_num)
+    encoder = BatchEncoder(1, 32, 176, 56, 5)        # encode [-1, 1] using 8 bits
+    # row_vec = row_vec_A.reshape(split_num, max_element_num)
     # encode
-    encode_number_list = [encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
+    # encode_number_list = [encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
     stop_time = time.time()
     print("Duration: ", stop_time - start_time)
     print("\n-------------------GPU:-------------------")
     start_time = time.time()
     fpn_store = FPN_store.init_from_arr(row_vec_A, key_generator.public_key.n, key_generator.public_key.max_int)
+    stop_time = time.time()
+    print("Duration: ", stop_time - start_time)
+    print("\n-------------------GPU with BatchEncode:-------------------")
+    start_time = time.time()
+    fpn_store_with_batch = FPN_store.batch_encode(row_vec_A, encoder, key_generator.public_key)
     stop_time = time.time()
     print("Duration: ", stop_time - start_time)
 
@@ -73,19 +78,19 @@ def test_encryption():
     # pen_list = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v), 0) for v in encode_number_list]
     # pen_list = [pen.apply_obfuscator() for pen in pen_list]
     # stop_time = time.time()
-    print("Duration: ", stop_time - start_time)
-    print("\n-------------------GPU:-------------------")
-    start_time = time.time()
-    pen_store = fpn_store.encrypt(key_generator.public_key)
-    pen_store = pen_store.obfuscation()
-    stop_time = time.time()
-    print("Duration: ", stop_time - start_time)
-    print("\n-------------------GPU with BatchEncode:-------------------")
-    encrypter = BatchEncryption()
-    start_time = time.time()
-    batch_encrypted_number = encrypter.gpuBatchEncrypt(encode_number_list, encoder.scaling, encoder.size, key_generator.public_key)
-    stop_time = time.time()
-    print("Duration: ", stop_time - start_time)
+    # print("Duration: ", stop_time - start_time)
+    # print("\n-------------------GPU:-------------------")
+    # start_time = time.time()
+    # pen_store = fpn_store.encrypt(key_generator.public_key)
+    # pen_store = pen_store.obfuscation()
+    # stop_time = time.time()
+    # print("Duration: ", stop_time - start_time)
+    # print("\n-------------------GPU with BatchEncode:-------------------")
+    # encrypter = BatchEncryption()
+    # start_time = time.time()
+    # batch_encrypted_number = encrypter.gpuBatchEncrypt(encode_number_list, encoder.scaling, encoder.size, key_generator.public_key)
+    # stop_time = time.time()
+    # print("Duration: ", stop_time - start_time)
 
 def test_matrix_operation():
     row_vec_A = np.random.uniform(-1, 1, 3000000)
@@ -186,4 +191,4 @@ def test_matrix_operation():
     stop_time = time.time()
     print("Evaluation duration: ", stop_time - start_time)
 
-test_matrix_operation()
+test_encryption()

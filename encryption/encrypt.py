@@ -16,7 +16,7 @@ class BatchEncryption(object):
         self.pub_key = pub_key
         self.private_key = private_key
 
-    def gpuBatchEncrypt(self, encode_number_list:list, scaling, size, pub_key):
+    def gpuBatchEncrypt(self, fpn_store:FPN_store, scaling, size, pub_key):
         ''''
             Encrypt several row_vec
             Encrypting process: row vector -> several BatchEncodeNumber -> FixPointNumber -> PaillierEncryptedNumber
@@ -29,13 +29,8 @@ class BatchEncryption(object):
         else:
             raise NotImplementedError("Please provide a public key when encrypting!")
         # package into batch number
-        # time1 = time.time()
-        fpn_store = FPN_store.fromBigIntegerList(encode_number_list, pub_key_used_in_encrypt)
         pen_store = fpn_store.encrypt(pub_key_used_in_encrypt)
         pen_store = pen_store.obfuscation()
-        # DEBUG
-        # time2 = time.time()
-        # print(time2 - time1)
         encrypted_row_vector = BatchEncryptedNumber(pen_store, scaling, size)
         return encrypted_row_vector
 

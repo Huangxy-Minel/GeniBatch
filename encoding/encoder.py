@@ -1,4 +1,7 @@
 import numpy as np
+from federatedml.secureprotol.fate_paillier import PaillierPublicKey
+
+
 class BatchEncodeNumber(object):
     def __init__(self, value, scaling, size):
         self.value = value
@@ -74,5 +77,6 @@ class BatchEncoder(object):
             complement = int(sign_num) & (pow(2, self.sign_bits + self.bit_width) - 1)   # transform to complement
             res.append(complement)
         return res
+
 
         

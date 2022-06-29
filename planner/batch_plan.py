@@ -5,7 +5,7 @@ from federatedml.FATE_Engine.python.BatchPlan.planner.plan_node import PlanNode
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
 from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption, BatchEncryptedNumber
-from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store
+from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store, PEN_store
 
 from federatedml.util import LOGGER
 
@@ -36,7 +36,7 @@ class BatchPlan(object):
         2. Memory optimization
     '''
     
-    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64, max_value=1):
+    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64, max_value=1, device_type='CPU'):
         if vector_mem_size != 1024 and vector_mem_size!= 2048 and vector_mem_size != 4096:
             raise NotImplementedError("Vector memory size of batchplan should be 1024 or 2048 or 4096")
         '''Use for BatchPlan'''
@@ -61,9 +61,11 @@ class BatchPlan(object):
         self.encoder = None
         self.encode_slot_mem = 0
         self.encode_sign_bits = 0
-        self.max_value = 1
+        self.max_value = max_value
         '''Use for encrypter'''
         self.encrypter = None
+        '''Use for GPU acceleration'''
+        self.device_type = device_type
 
 
     def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False, if_remote:bool=False):
@@ -192,8 +194,7 @@ class BatchPlan(object):
         if self.batch_scheme == []:
             # handle BatchPlan which contains MUL operator
             for merge_node in self.merge_nodes:
-                merge_node.max_slot_size += math.ceil(math.log2(self.vector_size))      # elements will sum up in matrix mul
-                merge_node.max_slot_size += 8 - merge_node.max_slot_size % 8            # transform to multiple of 8
+                merge_node.max_slot_size += math.ceil(math.log2(self.vector_size))          # elements will sum up in matrix mul
                 self.encode_sign_bits = merge_node.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
                 self.encode_sign_bits += 8 - self.encode_sign_bits % 8
                 self.encode_slot_mem = merge_node.max_slot_size + merge_node.max_slot_size * self.mul_times + self.add_times + self.mul_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
@@ -204,18 +205,24 @@ class BatchPlan(object):
                     # merge_node.splitTree(max_element_num, split_num)
                     merge_node.recursionUpdateDataIdx(max_element_num, split_num)
                     self.batch_scheme.append((max_element_num, split_num))
+                else:
+                    self.batch_scheme.append((max_element_num, 1))
 
             # handle BatchPlan which only contains ADD operator
             if self.merge_nodes == []:
                 for root in self.root_nodes:
                     self.encode_sign_bits = root.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
+                    self.encode_sign_bits += 8 - self.encode_sign_bits % 8
                     self.encode_slot_mem = root.max_slot_size + self.add_times      # the final memory for each slot
+                    self.encode_slot_mem += 8 - self.encode_slot_mem % 8
                     max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
                     if self.vector_size > max_element_num:
                         split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
                         # root.splitTree(max_element_num, split_num)
                         root.recursionUpdateDataIdx(max_element_num, split_num)
                         self.batch_scheme.append((max_element_num, split_num))
+                    else:
+                        self.batch_scheme.append((max_element_num, 1))
             self.setEncoder()
         else:
             if self.merge_nodes == []:
@@ -312,15 +319,24 @@ class BatchPlan(object):
                 row_batch_scheme: the batch scheme (max_element_num, split_num) of this row vector
             Return:
                 a BatchEncryptedNumber, which contains a PEN_store, stores a list of PaillierEncryptedNumber in GPU
+            Note:
+                Currently only support encrypting with GPU, 
         '''
         # make up zeros
         max_element_num, split_num = row_batch_scheme
         col_num = row_vec.shape[1]
         row_vec = np.hstack((row_vec, np.zeros((1, max_element_num * split_num - col_num))))
-        row_vec = row_vec.reshape(split_num, max_element_num)
         # encode
-        encode_number_list = [self.encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
-        return self.encrypter.gpuBatchEncrypt(encode_number_list, self.encoder.scaling, self.encoder.size, pub_key)
+        if self.device_type == 'CPU':
+            row_vec = row_vec.reshape(split_num, max_element_num)
+            encode_number_list = [self.encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
+            fpn_store = FPN_store.fromBigIntegerList(encode_number_list, pub_key)
+        elif self.device_type == 'GPU':
+            fpn_store = FPN_store.batch_encode(row_vec[0], self.encoder.scaling, self.encoder.size, self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits, pub_key)
+        else:
+            raise NotImplementedError("Only support CPU & GPU version")
+        return self.encrypter.gpuBatchEncrypt(fpn_store, self.encoder.scaling, self.encoder.size, pub_key)
+
 
     def decrypt(self, encrypted_data:BatchEncryptedNumber, private_key=None):
         '''
@@ -329,10 +345,18 @@ class BatchPlan(object):
                 encrypted_data: BatchEncryptedNumber, which contains pen_store and current scaling, size for each batch number
                 private_key: used in decrypt
         '''
-        batch_encoding_values = self.encrypter.gpuBatchDecrypt(encrypted_data, private_key)
-        plaintext_list = np.array([self.encoder.batchDecode(ben, encrypted_data.scaling, encrypted_data.size) for ben in batch_encoding_values])
-        # reshape
-        plaintext_row_vec = plaintext_list.reshape(plaintext_list.size)
+        if self.device_type == 'CPU':
+            batch_encoding_values = self.encrypter.gpuBatchDecrypt(encrypted_data, private_key)
+            print(batch_encoding_values)
+            plaintext_list = np.array([self.encoder.batchDecode(ben, encrypted_data.scaling, encrypted_data.size) for ben in batch_encoding_values])
+            # reshape
+            plaintext_row_vec = plaintext_list.reshape(plaintext_list.size)
+            print(plaintext_row_vec)
+        elif self.device_type == 'GPU':
+            print(type(encrypted_data.scaling))
+            plaintext_row_vec = encrypted_data.value.decrypt_with_batch_decode(private_key, encrypted_data.scaling, encrypted_data.size, 
+                                                                            self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits)
+            print(plaintext_row_vec)
         return plaintext_row_vec
 
     def serialExec(self):
@@ -353,7 +377,7 @@ class BatchPlan(object):
         outputs = []
         for one_level_opera_nodes in self.opera_nodes_list:
             for node in one_level_opera_nodes:
-                node.parallelExec(self.encoder)
+                node.parallelExec(self.encoder, self.device_type)
                 if node.if_remote:
                     transfer.remote(obj=(0, 0, node.batch_data), role=role, idx=-1, suffix=current_suffix)
         for root in self.root_nodes:

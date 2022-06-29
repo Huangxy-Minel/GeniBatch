@@ -1,7 +1,8 @@
 import numpy as np
 import copy, math
 from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryptedNumber
-from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store
+from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
+from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store, FPN_store
 
 class PlanNode(object):
     '''
@@ -267,7 +268,7 @@ class PlanNode(object):
         self.state = 1
         return self.batch_data
 
-    def parallelExec(self, encoder):
+    def parallelExec(self, encoder:BatchEncoder, device_type='CPU'):
         '''
             Execute node only base on its children, not recursively
             The batch data of each node: 
@@ -284,38 +285,61 @@ class PlanNode(object):
                 raise NotImplementedError("First child of each node must be encrypted!")
             for i in range(1, self.size):
                 # encode firstly
-                other_batch_data = [encoder.batchEncode(split_row_vec) for split_row_vec in self.children[i].getBatchData()] # a list of BatchEncoderNumber
-                if scaling < encoder.scaling:
-                    other_batch_data = [v * (encoder.scaling / scaling) for v in other_batch_data]
-                elif scaling > encoder.scaling:
-                    raise NotImplementedError("The scaling of ADD inputs is invalid!")
-                self.batch_data.value = self.batch_data.value.add_with_big_integer(other_batch_data)            # PEN_store + a list of big integer
+                if device_type == 'CPU':
+                    other_batch_data = [encoder.batchEncode(split_row_vec) for split_row_vec in self.children[i].getBatchData()]    # a list of BatchEncoderNumber
+                    '''Re-scaling'''
+                    if scaling < encoder.scaling:
+                        other_batch_data = [v * (encoder.scaling / scaling) for v in other_batch_data]
+                    elif scaling > encoder.scaling:
+                        raise NotImplementedError("The scaling of ADD inputs is invalid!")
+                    self.batch_data.value = self.batch_data.value.add_with_big_integer(other_batch_data)            # PEN_store + a list of big integer
+                elif device_type == 'GPU':
+                    other_batch_data = np.array(self.children[i].getBatchData())
+                    other_batch_data = other_batch_data.reshape(other_batch_data.size)
+                    fpn_store_with_batch = FPN_store.batch_encode(other_batch_data, encoder.scaling, encoder.size, encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits, self.batch_data.value.pub_key)
+                    '''Re-scaling'''
+                    if scaling < encoder.scaling:
+                        fpn_store_with_batch = fpn_store_with_batch * (encoder.scaling / scaling)
+                    elif scaling > encoder.scaling:
+                        raise NotImplementedError("The scaling of ADD inputs is invalid!")
+                    self.batch_data.value = self.batch_data.value + fpn_store_with_batch
+                else:
+                    raise NotImplementedError("Only support CPU & GPU device!")
             # print(self.batch_data)
         elif self.operator == "MUL":
             '''Encrypted vec is a PEN_store, the logic is: copy the PEN_store for split_num times, then mul with the coefficients which corresponds to it'''
             # copy encrypted vec
             batch_encrypted_vec = copy.deepcopy(self.children[0].getBatchData())       # BatchEncryptedNumber
-            # pen_list = batch_encrypted_vec.value.get_PEN_ndarray()      # a list of PaillierEncryptedNumber
+            if not isinstance(batch_encrypted_vec, BatchEncryptedNumber):
+                raise NotImplementedError("First child of each node must be encrypted!")
             pen_store = batch_encrypted_vec.value
-            # batch_data = [copy.deepcopy(pen_list) for _ in range(encoder.size)]     # copy
             batch_data = [pen_store.deep_copy() for _ in range(encoder.size)]     # copy
             for i in range(1, self.size):
                 # update scaling
-                batch_encrypted_vec.scaling *= batch_encrypted_vec.scaling
+                batch_encrypted_vec.scaling *= encoder.scaling
                 # mul with coefficients
                 other_batch_data = self.children[i].getBatchData()
-                for split_idx in range(encoder.size):
-                    coefficients = [v[split_idx] for v in other_batch_data]
-                    coefficients = encoder.scalarEncode(coefficients)       # encode
-                    # batch_data[split_idx] = PEN_store.set_from_PaillierEncryptedNumber(batch_data[split_idx])   # transform to PEN_store
-                    batch_data[split_idx] = batch_data[split_idx].mul_with_big_integer(coefficients)
-                    batch_data[split_idx] = batch_data[split_idx].sum()
-                # shift sum
-                self.batch_data = [BatchEncryptedNumber(batch_data[num], batch_encrypted_vec.scaling, batch_encrypted_vec.size) for num in range(encoder.size)]
-                # self.batch_data.value = batch_data[0]
-                # for split_idx in range(1, encoder.size):
-                #     self.batch_data.value = self.batch_data.value.mul_with_big_integer(int(pow(2, encoder.slot_mem_size)))
-                #     self.batch_data.value = self.batch_data.value + batch_data[split_idx]
+                if device_type == 'CPU':
+                    for split_idx in range(encoder.size):
+                        coefficients = [v[split_idx] for v in other_batch_data]
+                        coefficients = encoder.scalarEncode(coefficients)       # encode
+                        # batch_data[split_idx] = PEN_store.set_from_PaillierEncryptedNumber(batch_data[split_idx])   # transform to PEN_store
+                        batch_data[split_idx] = batch_data[split_idx].mul_with_big_integer(coefficients)
+                        batch_data[split_idx] = batch_data[split_idx].sum()
+                elif device_type == 'GPU':
+                    for split_idx in range(encoder.size):
+                        coefficients = [v[split_idx] for v in other_batch_data]
+                        coefficients, arr = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, batch_data[split_idx].pub_key)       # encode
+                        batch_data[split_idx] = batch_data[split_idx] * coefficients
+                        batch_data[split_idx] = batch_data[split_idx].sum()
+                else:
+                    raise NotImplementedError("Only support CPU & GPU device!")
+            # shift sum
+            self.batch_data = [BatchEncryptedNumber(batch_data[num], batch_encrypted_vec.scaling, batch_encrypted_vec.size) for num in range(encoder.size)]
+            # self.batch_data.value = batch_data[0]
+            # for split_idx in range(1, encoder.size):
+            #     self.batch_data.value = self.batch_data.value.mul_with_big_integer(int(pow(2, encoder.slot_mem_size)))
+            #     self.batch_data.value = self.batch_data.value + batch_data[split_idx]
         elif self.operator == "Merge":
             self.batch_data = []
             for i in range(self.size):
