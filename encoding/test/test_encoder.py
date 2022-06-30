@@ -7,9 +7,9 @@ from federatedml.secureprotol import PaillierEncrypt
 def encode():
     '''Init encoder'''
     pub_key_len = 1024
-    max_value, element_mem_size, encode_slot_mem, encode_sign_bits = 1, 64, 256, 64
+    max_value, element_mem_size, encode_slot_mem, encode_sign_bits = 1, 24, 256, 64
     encoder = BatchEncoder(max_value, element_mem_size, encode_slot_mem, encode_sign_bits, int(pub_key_len / encode_slot_mem))        
-    row_vec = np.random.uniform(-1, 1, int(pub_key_len / encode_slot_mem) * 10)     # return 10 batch number after encoding 
+    row_vec = np.random.uniform(-2, 2, int(pub_key_len / encode_slot_mem) * 10)     # return 10 batch number after encoding 
     '''Encoder'''
     print("-------------------Original row vector-------------------")
     print(row_vec)
@@ -62,12 +62,13 @@ def encode():
 def encode_with_gpu():
     '''Init encoder'''
     pub_key_len = 1024
-    max_value, element_mem_size, encode_slot_mem, encode_sign_bits = 1, 64, 256, 64
+    max_value, element_mem_size, encode_slot_mem, encode_sign_bits = 1, 24, 24, 0
     encoder = BatchEncoder(max_value, element_mem_size, encode_slot_mem, encode_sign_bits, int(pub_key_len / encode_slot_mem))      
     '''Init pub key'''
     encrypter = PaillierEncrypt()
     encrypter.generate_key()
-    row_vec = np.random.uniform(-1, 1, int(pub_key_len / encode_slot_mem) * 10)
+    row_vec = np.random.uniform(-1, 1, int(pub_key_len / encode_slot_mem) * 2)
+    row_vec = row_vec.astype(np.float32)
     print("-------------------Original row vector-------------------")
     print(row_vec)
     '''Encode'''

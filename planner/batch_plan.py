@@ -197,6 +197,7 @@ class BatchPlan(object):
                 merge_node.max_slot_size += math.ceil(math.log2(self.vector_size))          # elements will sum up in matrix mul
                 self.encode_sign_bits = merge_node.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
                 self.encode_sign_bits += 8 - self.encode_sign_bits % 8
+                merge_node.max_slot_size = self.encode_sign_bits + self.element_mem_size
                 self.encode_slot_mem = merge_node.max_slot_size + merge_node.max_slot_size * self.mul_times + self.add_times + self.mul_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
                 self.encode_slot_mem += 8 - self.encode_slot_mem % 8
                 max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
@@ -213,6 +214,7 @@ class BatchPlan(object):
                 for root in self.root_nodes:
                     self.encode_sign_bits = root.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
                     self.encode_sign_bits += 8 - self.encode_sign_bits % 8
+                    root.max_slot_size = self.encode_sign_bits + self.element_mem_size
                     self.encode_slot_mem = root.max_slot_size + self.add_times      # the final memory for each slot
                     self.encode_slot_mem += 8 - self.encode_slot_mem % 8
                     max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
@@ -347,16 +349,12 @@ class BatchPlan(object):
         '''
         if self.device_type == 'CPU':
             batch_encoding_values = self.encrypter.gpuBatchDecrypt(encrypted_data, private_key)
-            print(batch_encoding_values)
             plaintext_list = np.array([self.encoder.batchDecode(ben, encrypted_data.scaling, encrypted_data.size) for ben in batch_encoding_values])
             # reshape
             plaintext_row_vec = plaintext_list.reshape(plaintext_list.size)
-            print(plaintext_row_vec)
         elif self.device_type == 'GPU':
-            print(type(encrypted_data.scaling))
             plaintext_row_vec = encrypted_data.value.decrypt_with_batch_decode(private_key, encrypted_data.scaling, encrypted_data.size, 
                                                                             self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits)
-            print(plaintext_row_vec)
         return plaintext_row_vec
 
     def serialExec(self):

@@ -40,15 +40,16 @@ def test_encryption():
     print("\n--------------------------------------Encoding Test Report:--------------------------------------")
     print("\n-------------------CPU:-------------------")
     # print(N_JOBS)
-    # start_time = time.time()
+    start_time = time.time()
     # # FPN_num = Parallel(n_jobs=40)(delayed(FixedPointNumber.encode)(v) for v in row_vec_A)
-    # FPN_num = [FixedPointNumber.encode(v) for v in row_vec_A]
-    # stop_time = time.time()
-    # print("Duration: ", stop_time - start_time)
+    FPN_num = [FixedPointNumber.encode(v) for v in row_vec_A]
+    stop_time = time.time()
+    print("Duration: ", stop_time - start_time)
     print("\n-------------------CPU with BatchEncode:-------------------")
     start_time = time.time()
     max_element_num = 5
     split_num = int(len(row_vec_A) / max_element_num)
+    max_value, element_mem_size, encode_slot_mem, encode_sign_bits = 1, 32, 256, 64
     encoder = BatchEncoder(1, 32, 176, 56, 5)        # encode [-1, 1] using 8 bits
     # row_vec = row_vec_A.reshape(split_num, max_element_num)
     # encode
