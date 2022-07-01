@@ -268,18 +268,21 @@ def test_matrix_operation():
     t2 = time.time()
     print(t2 - t1)
     # cat
-    input_pen_store = batch_num_list_in_gpu[0]
-    input_fpn_store = coefficients_list[0]
-    for split_idx in range(1, max_element_num):
-        input_pen_store = input_pen_store.cat(batch_num_list_in_gpu[1], axis=1)
-        input_fpn_store = input_fpn_store.cat(coefficients_list[1], axis=1)
-    t1 = time.time()
-    print(t1 - t2)
-    input_pen_store = input_pen_store * input_fpn_store
+    # input_pen_store = batch_num_list_in_gpu[0]
+    # input_fpn_store = coefficients_list[0]
+    # for split_idx in range(1, max_element_num):
+    #     input_pen_store = input_pen_store.cat(batch_num_list_in_gpu[split_idx], axis=1)
+    #     input_fpn_store = input_fpn_store.cat(coefficients_list[split_idx], axis=1)
+    # t1 = time.time()
+    # print(t1 - t2)
+    # input_pen_store = input_pen_store * input_fpn_store
+    # t2 = time.time()
+    # print(t2 - t1)
+    # compute without cat
+    res = [batch_num_list_in_gpu[split_idx] * coefficients_list[split_idx] for split_idx in range(max_element_num)]
     # gpu_with_batch_res = [a * b for a, b in zip(batch_num_list_in_gpu, coefficients_list)]    # linear execute multiplication
     stop_time = time.time()
-    print(stop_time - t1)
     print("Duration: ", stop_time - start_time)
     print("Throughput: ", int(elements_num / (stop_time - start_time)))
 
-test_encryption()
+test_matrix_operation()

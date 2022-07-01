@@ -327,11 +327,24 @@ class PlanNode(object):
                         batch_data[split_idx] = batch_data[split_idx].mul_with_big_integer(coefficients)
                         batch_data[split_idx] = batch_data[split_idx].sum()
                 elif device_type == 'GPU':
+                    coefficients_list = []
+                    # quantization encode
                     for split_idx in range(encoder.size):
                         coefficients = [v[split_idx] for v in other_batch_data]
                         coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, batch_data[split_idx].pub_key)       # encode
-                        batch_data[split_idx] = batch_data[split_idx] * coefficients
-                        batch_data[split_idx] = batch_data[split_idx].sum()
+                        coefficients_list.append(coefficients)
+                    batch_data = [(batch_data[split_idx] * coefficients_list[split_idx]).sum() for split_idx in range(encoder.size)]    # use multi-threads to call the GPU
+                    # cat
+                    # input_pen_store = batch_data[0]
+                    # input_fpn_store = coefficients_list[0]
+                    # for split_idx in range(1, encoder.size):
+                    #     input_pen_store = input_pen_store.cat(batch_data[split_idx], axis=1)
+                    #     input_fpn_store = input_fpn_store.cat(coefficients_list[split_idx], axis=1)
+                    # input_pen_store = input_pen_store * input_fpn_store
+                    # # slice 
+                    # for split_idx in range(encoder.size):
+                    #     batch_data[split_idx] = input_pen_store.slice(split_idx*pen_store.store.vec_size, (split_idx+1)*pen_store.store.vec_size-1, 0)
+                    #     batch_data[split_idx] = batch_data[split_idx].sum()
                 else:
                     raise NotImplementedError("Only support CPU & GPU device!")
             # shift sum
