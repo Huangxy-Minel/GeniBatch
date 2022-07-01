@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import time
 
 A = np.random.uniform(-100, 100, (3000000, 20))
 mu = np.mean(A, axis = 0)
@@ -16,3 +17,4 @@ norm_A = norm_A / norm_A.max(axis = 0)
 #     print(row)
 #     row = row.reshape(1, len(row))
 #     print(row)
+print(time.time())
