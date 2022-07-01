@@ -329,7 +329,7 @@ class PlanNode(object):
                 elif device_type == 'GPU':
                     for split_idx in range(encoder.size):
                         coefficients = [v[split_idx] for v in other_batch_data]
-                        coefficients, arr = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, batch_data[split_idx].pub_key)       # encode
+                        coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, batch_data[split_idx].pub_key)       # encode
                         batch_data[split_idx] = batch_data[split_idx] * coefficients
                         batch_data[split_idx] = batch_data[split_idx].sum()
                 else:
