@@ -339,7 +339,6 @@ class BatchPlan(object):
             if self.multi_process_flag:
                 # use multi-processes
                 N_JOBS = multiprocessing.cpu_count()
-                process_handle_num = int(split_num/N_JOBS)
                 pool = multiprocessing.Pool(processes=N_JOBS)
                 sub_process = [pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[start_idx*N_JOBS:(start_idx+1)*N_JOBS], self.encoder, pub_key,)) 
                                                                                                             for start_idx in range(int(split_num/N_JOBS))]
@@ -368,7 +367,7 @@ class BatchPlan(object):
                 private_key: used in decrypt
         '''
         if self.device_type == 'CPU':
-            if self.multi_process_flag and len(encrypted_data.value) > multiprocessing.cpu_count():
+            if self.multi_process_flag:
                 # use multi-processes
                 N_JOBS = multiprocessing.cpu_count()
                 batch_encrypted_number_list = [BatchEncryptedNumber(encrypted_data.value[start_idx*N_JOBS:(start_idx+1)*N_JOBS], encrypted_data.scaling, encrypted_data.size)
