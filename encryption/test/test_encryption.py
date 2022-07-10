@@ -10,7 +10,7 @@ from federatedml.util.fixpoint_solver import FixedPointEncoder
 
 def encrypt_decrypt():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True)
     matrixA = np.random.uniform(-1, 1, (1, 100))     # ciphertext
     matrixB = np.random.uniform(-1, 1, (100, 1))     # plaintext
 
@@ -72,9 +72,9 @@ def encrypt_decrypt_with_gpu_encode():
 
 def encrypted_add():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=64, device_type='GPU')
-    matrixA = np.random.uniform(-1, 1, (1, 100))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 100))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True)
+    matrixA = np.random.uniform(-1, 1, (1, 1000000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 1000000))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
@@ -102,7 +102,6 @@ def encrypted_add():
     outputs = myBatchPlan.parallelExec()
     '''Decrypt'''
     outputs = [myBatchPlan.decrypt(output, encrypter.privacy_key) for output in outputs]
-    print(outputs)
     row_num, col_num = myBatchPlan.matrix_shape
     output_matrix = np.zeros(myBatchPlan.matrix_shape)
     for row_id in range(row_num):
@@ -120,10 +119,10 @@ def encrypted_add():
 
 def encrypted_mul():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU')
-    matrixA = np.random.uniform(-1, 1, (1, 300))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 300))
-    matrixC = np.random.uniform(-1, 1, (300, 20))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True)
+    matrixA = np.random.uniform(-1, 1, (1, 30000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 30000))
+    matrixC = np.random.uniform(-1, 1, (30000, 1))     # plaintext
     matrixA = matrixA.astype(np.float32)
     matrixB = matrixB.astype(np.float32)
     matrixC = matrixC.astype(np.float32)
@@ -287,4 +286,4 @@ def lr_procedure():
         print("\n-------------------Test Fail-------------------")
         print(output_matrix == result)
 
-encrypted_mul()
+encrypted_add()

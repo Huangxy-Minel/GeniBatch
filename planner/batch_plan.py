@@ -9,6 +9,9 @@ from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store,
 
 from federatedml.util import LOGGER
 
+import multiprocessing
+
+
 class BatchPlan(object):
     '''
     version 2.1:
@@ -36,7 +39,7 @@ class BatchPlan(object):
         2. Memory optimization
     '''
     
-    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64, max_value=1, device_type='CPU'):
+    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64, max_value=1, device_type='CPU', multi_process_flag=False):
         if vector_mem_size != 1024 and vector_mem_size!= 2048 and vector_mem_size != 4096:
             raise NotImplementedError("Vector memory size of batchplan should be 1024 or 2048 or 4096")
         '''Use for BatchPlan'''
@@ -66,7 +69,8 @@ class BatchPlan(object):
         self.encrypter = None
         '''Use for GPU acceleration'''
         self.device_type = device_type
-
+        '''Use for multi-processes'''
+        self.multi_process_flag = multi_process_flag
 
     def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False, if_remote:bool=False):
         '''
@@ -313,7 +317,7 @@ class BatchPlan(object):
             raise NotImplementedError("Please set encoder before encoding!")
         return self.encoder.batchEncode(row_vec)
 
-    def encrypt(self, row_vec:np.array, row_batch_scheme, pub_key=None):
+    def encrypt(self, row_vec:np.array, row_batch_scheme, pub_key=None, multi_process_flag=False):
         '''
             According to the batch scheme, encrypt given row_vec
             Input:
@@ -322,7 +326,8 @@ class BatchPlan(object):
             Return:
                 a BatchEncryptedNumber, which contains a PEN_store, stores a list of PaillierEncryptedNumber in GPU
             Note:
-                Currently only support encrypting with GPU, 
+                CPU: use pailler_encrypt.py
+                GPU: use fpn_store
         '''
         # make up zeros
         max_element_num, split_num = row_batch_scheme
@@ -331,13 +336,28 @@ class BatchPlan(object):
         # encode
         if self.device_type == 'CPU':
             row_vec = row_vec.reshape(split_num, max_element_num)
-            encode_number_list = [self.encoder.batchEncode(slot_number) for slot_number in row_vec]    # a list of BatchEncodeNumber
-            fpn_store = FPN_store.fromBigIntegerList(encode_number_list, pub_key)
+            if self.multi_process_flag:
+                # use multi-processes
+                N_JOBS = multiprocessing.cpu_count()
+                process_handle_num = int(split_num/N_JOBS)
+                pool = multiprocessing.Pool(processes=N_JOBS)
+                sub_process = [pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[start_idx*N_JOBS:(start_idx+1)*N_JOBS], self.encoder, pub_key,)) 
+                                                                                                            for start_idx in range(int(split_num/N_JOBS))]
+                if split_num > int(split_num/N_JOBS) * N_JOBS:
+                    sub_process.append(pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[int(split_num/N_JOBS) * N_JOBS:], self.encoder, pub_key,)))
+                pool.close()
+                pool.join()
+                res = []
+                for p in sub_process:
+                    res.extend(p.get().value)
+                return BatchEncryptedNumber(res, self.encoder.scaling, self.encoder.size)
+            else:
+                return self.encrypter.cpuBatchEncrypt(row_vec, self.encoder, pub_key)
         elif self.device_type == 'GPU':
             fpn_store = FPN_store.batch_encode(row_vec[0], self.encoder.scaling, self.encoder.size, self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits, pub_key)
+            return self.encrypter.gpuBatchEncrypt(fpn_store, self.encoder.scaling, self.encoder.size, pub_key)
         else:
             raise NotImplementedError("Only support CPU & GPU version")
-        return self.encrypter.gpuBatchEncrypt(fpn_store, self.encoder.scaling, self.encoder.size, pub_key)
 
 
     def decrypt(self, encrypted_data:BatchEncryptedNumber, private_key=None):
@@ -348,10 +368,26 @@ class BatchPlan(object):
                 private_key: used in decrypt
         '''
         if self.device_type == 'CPU':
-            batch_encoding_values = self.encrypter.gpuBatchDecrypt(encrypted_data, private_key)
-            plaintext_list = np.array([self.encoder.batchDecode(ben, encrypted_data.scaling, encrypted_data.size) for ben in batch_encoding_values])
-            # reshape
-            plaintext_row_vec = plaintext_list.reshape(plaintext_list.size)
+            if self.multi_process_flag and len(encrypted_data.value) > multiprocessing.cpu_count():
+                # use multi-processes
+                N_JOBS = multiprocessing.cpu_count()
+                batch_encrypted_number_list = [BatchEncryptedNumber(encrypted_data.value[start_idx*N_JOBS:(start_idx+1)*N_JOBS], encrypted_data.scaling, encrypted_data.size)
+                                                                                                            for start_idx in range(int(len(encrypted_data.value)/N_JOBS))]
+                if len(encrypted_data.value) > int(len(encrypted_data.value)/N_JOBS) * N_JOBS:
+                    batch_encrypted_number_list.append(BatchEncryptedNumber(encrypted_data.value[int(len(encrypted_data.value)/N_JOBS) * N_JOBS:], encrypted_data.scaling, encrypted_data.size))
+                pool = multiprocessing.Pool(processes=N_JOBS)
+                sub_process = [pool.apply_async(self.encrypter.cpuBatchDecrypt, (batch_encrypted_number, self.encoder, private_key,)) 
+                                                                                                            for batch_encrypted_number in batch_encrypted_number_list]
+                pool.close()
+                pool.join()
+                plaintext_row_vec =[]
+                for p in sub_process:
+                    temp = np.array(p.get())
+                    plaintext_row_vec.extend(temp.reshape(temp.size))
+            else:
+                plaintext_row_vec = self.encrypter.cpuBatchDecrypt(encrypted_data, self.encoder, private_key)
+                plaintext_row_vec = np.array(plaintext_row_vec)
+                plaintext_row_vec = plaintext_row_vec.reshape(plaintext_row_vec.size)
         elif self.device_type == 'GPU':
             plaintext_row_vec = encrypted_data.value.decrypt_with_batch_decode(private_key, encrypted_data.scaling, encrypted_data.size, 
                                                                             self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits)
@@ -375,6 +411,7 @@ class BatchPlan(object):
         outputs = []
         for one_level_opera_nodes in self.opera_nodes_list:
             time1 = time.time()
+            '''single process'''
             for node in one_level_opera_nodes:
                 node.parallelExec(self.encoder, self.device_type)
                 if node.if_remote:
