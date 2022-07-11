@@ -317,7 +317,7 @@ class BatchPlan(object):
             raise NotImplementedError("Please set encoder before encoding!")
         return self.encoder.batchEncode(row_vec)
 
-    def encrypt(self, row_vec:np.array, row_batch_scheme, pub_key=None, multi_process_flag=False):
+    def encrypt(self, row_vec:np.array, row_batch_scheme, pub_key=None):
         '''
             According to the batch scheme, encrypt given row_vec
             Input:
