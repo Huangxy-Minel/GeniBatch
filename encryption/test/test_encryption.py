@@ -72,7 +72,7 @@ def encrypt_decrypt_with_gpu_encode():
 
 def encrypted_add():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=False)
     matrixA = np.random.uniform(-1, 1, (1, 1000000))     # ciphertext
     matrixB = np.random.uniform(-1, 1, (1, 1000000))     # plaintext
 
@@ -120,9 +120,9 @@ def encrypted_add():
 def encrypted_mul():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True)
-    matrixA = np.random.uniform(-1, 1, (1, 30000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 30000))
-    matrixC = np.random.uniform(-1, 1, (30000, 1))     # plaintext
+    matrixA = np.random.uniform(-1, 1, (1, 10000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 10000))
+    matrixC = np.random.uniform(-1, 1, (10000, 1))     # plaintext
     matrixA = matrixA.astype(np.float32)
     matrixB = matrixB.astype(np.float32)
     matrixC = matrixC.astype(np.float32)
@@ -182,8 +182,6 @@ def encrypted_mul():
     else:
         print("\n-------------------Test Fail-------------------")
         print(output_matrix == result)
-        # print(matrixA.reshape(matrixA.size).tolist())
-        # print(matrixC.reshape(matrixA.size).tolist())
 
 def scalar_mul():
     encoder = BatchEncoder(1, 64, 256, 64, 3)        # encode [-1, 1] using 64 bits
@@ -286,4 +284,4 @@ def lr_procedure():
         print("\n-------------------Test Fail-------------------")
         print(output_matrix == result)
 
-encrypted_add()
+encrypted_mul()

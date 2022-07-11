@@ -336,14 +336,14 @@ class BatchPlan(object):
         # encode
         if self.device_type == 'CPU':
             row_vec = row_vec.reshape(split_num, max_element_num)
-            if self.multi_process_flag:
+            if self.multi_process_flag and split_num > multiprocessing.cpu_count():
                 # use multi-processes
                 N_JOBS = multiprocessing.cpu_count()
+                row_length = math.ceil(split_num / N_JOBS)      # each process handles row_length vectors
                 pool = multiprocessing.Pool(processes=N_JOBS)
-                sub_process = [pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[start_idx*N_JOBS:(start_idx+1)*N_JOBS], self.encoder, pub_key,)) 
-                                                                                                            for start_idx in range(int(split_num/N_JOBS))]
-                if split_num > int(split_num/N_JOBS) * N_JOBS:
-                    sub_process.append(pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[int(split_num/N_JOBS) * N_JOBS:], self.encoder, pub_key,)))
+                sub_process = [pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[idx*row_length:(idx+1)*row_length], self.encoder, pub_key,)) 
+                                                                                                            for idx in range(N_JOBS-1)]
+                sub_process.append(pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[(N_JOBS-1)*row_length:], self.encoder, pub_key,)))
                 pool.close()
                 pool.join()
                 res = []
@@ -367,13 +367,13 @@ class BatchPlan(object):
                 private_key: used in decrypt
         '''
         if self.device_type == 'CPU':
-            if self.multi_process_flag:
+            if self.multi_process_flag and len(encrypted_data.value) > multiprocessing.cpu_count():
                 # use multi-processes
                 N_JOBS = multiprocessing.cpu_count()
-                batch_encrypted_number_list = [BatchEncryptedNumber(encrypted_data.value[start_idx*N_JOBS:(start_idx+1)*N_JOBS], encrypted_data.scaling, encrypted_data.size)
-                                                                                                            for start_idx in range(int(len(encrypted_data.value)/N_JOBS))]
-                if len(encrypted_data.value) > int(len(encrypted_data.value)/N_JOBS) * N_JOBS:
-                    batch_encrypted_number_list.append(BatchEncryptedNumber(encrypted_data.value[int(len(encrypted_data.value)/N_JOBS) * N_JOBS:], encrypted_data.scaling, encrypted_data.size))
+                row_length = math.ceil(len(encrypted_data.value) / N_JOBS)      # each process handles row_length vectors
+                batch_encrypted_number_list = [BatchEncryptedNumber(encrypted_data.value[idx*row_length:(idx+1)*row_length], encrypted_data.scaling, encrypted_data.size)
+                                                                                                            for idx in range(N_JOBS-1)]
+                batch_encrypted_number_list.append(BatchEncryptedNumber(encrypted_data.value[(N_JOBS-1)*row_length:], encrypted_data.scaling, encrypted_data.size))
                 pool = multiprocessing.Pool(processes=N_JOBS)
                 sub_process = [pool.apply_async(self.encrypter.cpuBatchDecrypt, (batch_encrypted_number, self.encoder, private_key,)) 
                                                                                                             for batch_encrypted_number in batch_encrypted_number_list]
@@ -410,9 +410,9 @@ class BatchPlan(object):
         outputs = []
         for one_level_opera_nodes in self.opera_nodes_list:
             time1 = time.time()
-            '''single process'''
             for node in one_level_opera_nodes:
-                node.parallelExec(self.encoder, self.device_type)
+                '''single process'''
+                node.parallelExec(self.encoder, self.device_type, self.multi_process_flag)
                 if node.if_remote:
                     transfer.remote(obj=(0, 0, node.batch_data), role=role, idx=-1, suffix=current_suffix)
             time2 = time.time()

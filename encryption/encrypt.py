@@ -15,9 +15,10 @@ class BatchEncryptedNumber(object):
     def __add__(self, other):
         if not isinstance(self.value, list):
             raise TypeError("In CPU mode, BatchEncryptedNumber.value should be a list of PaillierEncryptedNumber!")
-        if len(self.value) != len(other):
-            raise NotImplementedError("The shapes of self and other are not equal!")
-        value = [v1 + v2 for v1, v2 in zip(self.value, other)]
+        if isinstance(other, list) and len(self.value) == len(other):
+            value = [v1 + v2 for v1, v2 in zip(self.value, other)]
+        elif isinstance(other, BatchEncryptedNumber) and len(self.value) == len(other.value):
+            value = [v1 + v2 for v1, v2 in zip(self.value, other.value)]
         return BatchEncryptedNumber(value, self.scaling, self.size)
 
     def __mul__(self, other):
@@ -33,6 +34,16 @@ class BatchEncryptedNumber(object):
         for v in self.value:
             sum_value = v + sum_value
         return [sum_value]
+
+    def split(self, start_idx, end_idx=None):
+        if end_idx:
+            return BatchEncryptedNumber(self.value[start_idx : end_idx], self.scaling, self.size)
+        else:
+            return BatchEncryptedNumber(self.value[start_idx : ], self.scaling, self.size)
+    def merge(self, other):
+        if not isinstance(other, BatchEncryptedNumber):
+            raise TypeError("The input of merge function should be BatchENcryptedNumber!")
+        self.value.extend(other.value)
 
 class BatchEncryption(object):
     def __init__(self, pub_key=None, private_key=None):
