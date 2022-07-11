@@ -119,7 +119,7 @@ def encrypted_add():
 
 def encrypted_mul():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True, max_processes=None)
     matrixA = np.random.uniform(-1, 1, (1, 10000))     # ciphertext
     matrixB = np.random.uniform(-1, 1, (1, 10000))
     matrixC = np.random.uniform(-1, 1, (10000, 1))     # plaintext

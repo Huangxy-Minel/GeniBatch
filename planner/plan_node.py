@@ -269,7 +269,7 @@ class PlanNode(object):
         self.state = 1
         return self.batch_data
 
-    def parallelExec(self, encoder:BatchEncoder, device_type='CPU', multi_process_flag=False):
+    def parallelExec(self, encoder:BatchEncoder, device_type='CPU', multi_process_flag=False, max_processes=None):
         '''
             Execute node only base on its children, not recursively
             The batch data of each node: 
@@ -281,7 +281,8 @@ class PlanNode(object):
                 if device_type == 'CPU':
                     self_batch_data = self.children[0].getBatchData()   # a BatchEncryptedNumber
                     if multi_process_flag:
-                        N_JOBS = multiprocessing.cpu_count()
+                        if max_processes: N_JOBS = max_processes
+                        else: N_JOBS = multiprocessing.cpu_count()
                         tasks_num_per_proc = math.ceil(len(self_batch_data.value) / N_JOBS)
                         for other_row_vec in [self.children[i].getBatchData() for i in range(1, self.size)]:
                             pool = multiprocessing.Pool(processes=N_JOBS)
@@ -313,7 +314,8 @@ class PlanNode(object):
                 batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
                 other_batch_data = self.children[1].getBatchData()
                 if multi_process_flag:
-                    N_JOBS = multiprocessing.cpu_count()
+                    if max_processes: N_JOBS = max_processes
+                    else: N_JOBS = multiprocessing.cpu_count()
                     tasks_num_per_proc = math.ceil(len(batch_encrypted_vec.value) / N_JOBS)
                     pool = multiprocessing.Pool(processes=N_JOBS)
                     sub_process = [pool.apply_async(self.cpuMUL, (batch_encrypted_vec.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 

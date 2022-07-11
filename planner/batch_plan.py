@@ -39,7 +39,7 @@ class BatchPlan(object):
         2. Memory optimization
     '''
     
-    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64, max_value=1, device_type='CPU', multi_process_flag=False):
+    def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64, max_value=1, device_type='CPU', multi_process_flag=False, max_processes=None):
         if vector_mem_size != 1024 and vector_mem_size!= 2048 and vector_mem_size != 4096:
             raise NotImplementedError("Vector memory size of batchplan should be 1024 or 2048 or 4096")
         '''Use for BatchPlan'''
@@ -71,6 +71,7 @@ class BatchPlan(object):
         self.device_type = device_type
         '''Use for multi-processes'''
         self.multi_process_flag = multi_process_flag
+        self.max_processes = max_processes
 
     def fromMatrix(self, matrixA:np.ndarray, encrypted_flag:bool=False, if_remote:bool=False):
         '''
@@ -338,7 +339,10 @@ class BatchPlan(object):
             row_vec = row_vec.reshape(split_num, max_element_num)
             if self.multi_process_flag and split_num > multiprocessing.cpu_count():
                 # use multi-processes
-                N_JOBS = multiprocessing.cpu_count()
+                if self.max_processes:
+                    N_JOBS = self.max_processes
+                else:
+                    N_JOBS = multiprocessing.cpu_count()
                 row_length = math.ceil(split_num / N_JOBS)      # each process handles row_length vectors
                 pool = multiprocessing.Pool(processes=N_JOBS)
                 sub_process = [pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[idx*row_length:(idx+1)*row_length], self.encoder, pub_key,)) 
@@ -369,7 +373,10 @@ class BatchPlan(object):
         if self.device_type == 'CPU':
             if self.multi_process_flag and len(encrypted_data.value) > multiprocessing.cpu_count():
                 # use multi-processes
-                N_JOBS = multiprocessing.cpu_count()
+                if self.max_processes:
+                    N_JOBS = self.max_processes
+                else:
+                    N_JOBS = multiprocessing.cpu_count()
                 row_length = math.ceil(len(encrypted_data.value) / N_JOBS)      # each process handles row_length vectors
                 batch_encrypted_number_list = [BatchEncryptedNumber(encrypted_data.value[idx*row_length:(idx+1)*row_length], encrypted_data.scaling, encrypted_data.size)
                                                                                                             for idx in range(N_JOBS-1)]
@@ -412,7 +419,7 @@ class BatchPlan(object):
             time1 = time.time()
             for node in one_level_opera_nodes:
                 '''single process'''
-                node.parallelExec(self.encoder, self.device_type, self.multi_process_flag)
+                node.parallelExec(self.encoder, self.device_type, self.multi_process_flag, self.max_processes)
                 if node.if_remote:
                     transfer.remote(obj=(0, 0, node.batch_data), role=role, idx=-1, suffix=current_suffix)
             time2 = time.time()
