@@ -1,5 +1,5 @@
 import numpy as np
-import time
+import time, math, copy
 
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store, PEN_store
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
@@ -11,6 +11,9 @@ class BatchEncryptedNumber(object):
         self.value = value          # store the value of all encrypted BatchEncodeNumber: PEN_store or a list of PaillierEncryptedNumber
         self.scaling = scaling
         self.size = size
+        '''Use for lazy operation'''
+        self.batch_idx_map = None
+        self.valid_idx = None
     
     def __add__(self, other):
         if not isinstance(self.value, list):
@@ -29,11 +32,26 @@ class BatchEncryptedNumber(object):
         value = [v1 * v2 for v1, v2 in zip(self.value, other)]
         return BatchEncryptedNumber(value, self.scaling, self.size)
 
-    def sum(self):
-        sum_value = 0
-        for v in self.value:
-            sum_value = v + sum_value
-        return [sum_value]
+    def sum(self, sum_idx=None):
+        if not sum_idx:
+            sum_value = 0
+            for v in self.value:
+                sum_value = v + sum_value
+            return [sum_value]
+        else:
+            batch_data = [[] for split_idx in range(self.size)]
+            for idx in sum_idx:
+                split_idx, batch_num = self.get_batch_num_with_idx(idx)
+                batch_data[split_idx].append(copy.deepcopy(batch_num))
+            res = [0 for split_idx in range(self.size)]
+            for split_idx in range(len(batch_data)):
+                for v in batch_data[split_idx]:
+                    res[split_idx] = v + res[split_idx]
+            return res
+
+    def get_batch_num_with_idx(self, idx):
+        batch_idx = int(idx / self.size)
+        return [idx - batch_idx * self.size, self.value[batch_idx]]
 
     def split(self, start_idx, end_idx=None):
         if end_idx:

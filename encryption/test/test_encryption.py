@@ -284,4 +284,50 @@ def lr_procedure():
         print("\n-------------------Test Fail-------------------")
         print(output_matrix == result)
 
-encrypted_mul()
+def split_sum():
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True, max_processes=None)
+    matrixA = np.random.uniform(-1, 1, (1, 1000))     # ciphertext
+    '''Contruct BatchPlan'''
+    myBatchPlan.fromMatrix(matrixA, True)
+    myBatchPlan.splitSum([[1, 11, 111]])
+    myBatchPlan.weave()
+    batch_scheme = myBatchPlan.getBatchScheme()
+    max_element_num, split_num = batch_scheme[0]
+    print("Element num in one vector: ", + max_element_num)
+    print("Split num: ", + split_num)
+    print("Memory of each slot: ", + myBatchPlan.encoder.slot_mem_size)
+    print("Memory of extra sign bits: ", + myBatchPlan.encoder.sign_bits)
+
+    '''Encrypt'''
+    print("\n-------------------Encryption:-------------------")
+    encrypter = PaillierEncrypt()
+    encrypter.generate_key()
+    myBatchPlan.setEncrypter()
+    encrypted_row_vec = myBatchPlan.encrypt(matrixA, batch_scheme[0], encrypter.public_key)
+    '''Assign encrypted vector'''
+    myBatchPlan.assignEncryptedVector(0, 0, encrypted_row_vec)
+    print("\n-------------------Begin to exec Batch Plan.-------------------")
+    outputs = myBatchPlan.parallelExec()
+    res = []
+    for output in outputs:
+        row_vec = []
+        for split_sum_res in output:
+            # reshape
+            temp = []
+            valid_idx = []
+            for idx in range(len(split_sum_res.value)):
+                if split_sum_res.value[idx] != 0: 
+                    temp.append(split_sum_res.value[idx])
+                    valid_idx.append(idx)
+            split_sum_res.value = temp
+            plaintext = myBatchPlan.decrypt(split_sum_res, encrypter.privacy_key)
+            real_res = 0
+            for batch_idx, split_idx in enumerate(valid_idx):
+                real_res += plaintext[batch_idx*split_sum_res.size + split_idx]
+            print(real_res)
+            row_vec.append(real_res)
+        res.append(row_vec)
+    print(matrixA[0][1] + matrixA[0][11] + matrixA[0][111])
+
+split_sum()

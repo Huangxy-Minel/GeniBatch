@@ -189,5 +189,22 @@ def interaction():
         print(output_matrix == result)
     
 
-weaver()
+def split_sum():
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24)
+    matrixA = np.random.rand(1, 10)
+    print("\n-------------------Test Report:-------------------")
+    myBatchPlan.fromMatrix(matrixA, True)
+    myBatchPlan.splitSum([[1, 3, 5]])
+    myBatchPlan.weave()
+    myBatchPlan.printBatchPlan()
+    batch_scheme = myBatchPlan.getBatchScheme()
+    max_element_num, split_num = batch_scheme[0]
+    print("Element num in one vector: ", + max_element_num)
+    print("Split num: ", + split_num)
+    outputs = myBatchPlan.parallelExec()
+    print(outputs[0])
+
+
+split_sum()
 

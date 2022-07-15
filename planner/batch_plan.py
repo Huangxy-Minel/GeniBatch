@@ -56,6 +56,7 @@ class BatchPlan(object):
         self.merge_nodes = []                       # record merge nodes, since only node under merge nodes need be splitted
         self.mul_times = 0
         self.add_times = 0
+        self.sum_times = 0
         '''Use for data storage'''
         self.data_storage = data_storage            # database of the batch plan
         '''Use for interaction with other parties'''
@@ -188,6 +189,21 @@ class BatchPlan(object):
         # self.opera_nodes_list.append(merge_nodes_list)
         self.merge_nodes = merge_nodes_list
         self.mul_times += 1
+
+    def splitSum(self, sum_idx_list:list):
+        '''
+            Sum self with index
+            sum_idx_list: 2-D array, each element such as [[1, 3, 5]] means self.batch_data[1] + self.batch_data[3] + self.batch_data[5]
+            Currently only support row vector
+        '''
+        for row_id in range(self.matrix_shape[0]):
+            new_opera_node = PlanNode.fromOperator("SUM")
+            new_opera_node.addChild(self.root_nodes[row_id])
+            new_opera_node.shape = (1, len(sum_idx_list))
+            new_opera_node.sum_idx_list = sum_idx_list
+            new_opera_node.max_slot_size = self.element_mem_size + math.ceil(math.log2(self.vector_size))
+            self.root_nodes[row_id] = new_opera_node
+        self.sum_times += 1
         
 
     def weave(self, encode_para=None):
@@ -284,8 +300,6 @@ class BatchPlan(object):
             Assign unencrypted vector data to vector nodes
             Note: each vector data should be [array(...), array(...), ...], that means original vector has been splitted to several batch (array)
         '''
-        if self.vector_nodes_list == []:
-            raise NotImplementedError("Please update vector nodes list firstly!")
         for vec_node in self.vector_nodes_list:
             batch_data = [self.data_storage.getDataFromIdx(split_data_idx) for split_data_idx in vec_node.getDataIdxList()]
             vec_node.setBatchData(batch_data)

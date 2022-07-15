@@ -15,7 +15,7 @@ class PlanNode(object):
     TODO: Better encapsulation. Specify which variables are inaccessible, exp: PlanNode._operatror
     '''
 
-    def __init__(self, operator=None, batch_data=None, max_slot_size=0, encrypted_flag=False, if_remote=False):
+    def __init__(self, operator=None, batch_data=None, max_slot_size=0, sum_idx_list=None, encrypted_flag=False, if_remote=False):
         '''Node properties'''
         self.operator = operator            # ADD, MUL or Merge
         self.batch_data = batch_data        # vector data of this node; type: list or just one number, according to node shape; exp: [np.array, np.array, ...] or [PEN, PEN, ...]
@@ -31,6 +31,8 @@ class PlanNode(object):
         self.encrypted_flag = encrypted_flag             # represents if batch_data is encrypted or not. default: false
         '''Use for interaction'''
         self.if_remote = if_remote      # represents if the output of this node need to remote to other parties or not
+        '''Use for split sum'''
+        self.sum_idx_list = sum_idx_list
         
 
     @staticmethod
@@ -54,7 +56,7 @@ class PlanNode(object):
         '''
         Create a node from a operator (ADD, MUL or Merge)
         '''
-        if operator == "ADD" or operator == "MUL" or operator == "Merge":
+        if operator == "ADD" or operator == "MUL" or operator == "Merge" or operator == "SUM":
             new_node = PlanNode(operator=operator, if_remote=if_remote)
         else: 
             raise TypeError("Please check the operation type, just supports ADD, MUL and Merge!")
@@ -341,6 +343,14 @@ class PlanNode(object):
             self.batch_data = []
             for i in range(self.size):
                 self.batch_data.append(self.children[i].getBatchData())
+        elif self.operator == "SUM":
+            self.batch_data = []
+            batch_enc_vec = self.children[0].getBatchData()
+            if device_type == 'CPU':
+                self.batch_data = []
+                for sum_idx in self.sum_idx_list:
+                    sum_res = batch_enc_vec.sum(sum_idx)
+                    self.batch_data.append(BatchEncryptedNumber(sum_res, batch_enc_vec.scaling, batch_enc_vec.size))
         else: 
             raise NotImplementedError("Invalid operator node!")
         self.state = 1
