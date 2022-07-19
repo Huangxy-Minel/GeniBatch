@@ -315,7 +315,7 @@ class PlanNode(object):
         elif self.operator == "batchMUL":
             if self.size > 2:
                 raise NotImplementedError("Current version only supports mul with one vector!")
-            batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
+            batch_encrypted_vec = copy.deepcopy(self.children[0].getBatchData())       # BatchEncryptedNumber
             other_batch_data = self.children[1].getBatchData()
             if device_type == 'CPU':
                 if multi_process_flag:

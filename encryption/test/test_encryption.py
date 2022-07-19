@@ -1,4 +1,5 @@
 import numpy as np
+import time
 from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
@@ -119,10 +120,10 @@ def encrypted_add():
 
 def encrypted_mul():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=True, max_processes=None)
-    matrixA = np.random.uniform(-1, 1, (1, 10000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 10000))
-    matrixC = np.random.uniform(-1, 1, (10000, 1))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=False, max_processes=None)
+    matrixA = np.random.uniform(-1, 1, (1, 3000000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 3000000))
+    matrixC = np.random.uniform(-1, 1, (3000000, 1))     # plaintext
     matrixA = matrixA.astype(np.float32)
     matrixB = matrixB.astype(np.float32)
     matrixC = matrixC.astype(np.float32)
@@ -147,7 +148,10 @@ def encrypted_mul():
     encrypter = PaillierEncrypt()
     encrypter.generate_key()
     myBatchPlan.setEncrypter()
+    time1 = time.time()
     encrypted_row_vec = myBatchPlan.encrypt(matrixA, batch_scheme[0], encrypter.public_key)
+    time2 = time.time()
+    print("Encrypt costs: ", time2 - time1)
 
     '''Assign encrypted vector'''
     myBatchPlan.assignEncryptedVector(0, 0, encrypted_row_vec)
@@ -331,4 +335,4 @@ def split_sum():
     print(matrixA[0][1] + matrixA[0][11] + matrixA[0][111])
     print(matrixA[0][2] + matrixA[0][22] + matrixA[0][222])
 
-encrypted_add()
+encrypted_mul()

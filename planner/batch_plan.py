@@ -420,10 +420,12 @@ class BatchPlan(object):
                 if node.if_remote:
                     transfer.remote(obj=(0, 0, node.batch_data), role=role, idx=-1, suffix=current_suffix)
             time2 = time.time()
-            if one_level_opera_nodes[0].operator == "ADD":
-                LOGGER.info(f"ADD operator costs: {time2 - time1}")
-            elif one_level_opera_nodes[0].operator == "MUL":
-                LOGGER.info(f"MUL operator costs: {time2 - time1}")
+            if one_level_opera_nodes[0].operator == "batchADD":
+                LOGGER.info(f"batchADD operator costs: {time2 - time1}")
+            elif one_level_opera_nodes[0].operator == "batchMUL":
+                LOGGER.info(f"batchMUL operator costs: {time2 - time1}")
+            elif one_level_opera_nodes[0].operator == "batchSUM":
+                LOGGER.info(f"batchSUM operator costs: {time2 - time1}")
         for root in self.root_nodes:
             outputs.append(root.getBatchData())
         return outputs
