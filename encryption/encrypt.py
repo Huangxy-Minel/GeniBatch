@@ -7,13 +7,20 @@ from federatedml.secureprotol.fate_paillier import PaillierKeypair, PaillierPubl
 
 
 class BatchEncryptedNumber(object):
-    def __init__(self, value, scaling, size):
-        self.value = value          # store the value of all encrypted BatchEncodeNumber: PEN_store or a list of PaillierEncryptedNumber
+    def __init__(self, value, scaling, size, lazy_flag=False):
+        self.value = None          # store the value of all encrypted BatchEncodeNumber: PEN_store or a list of PaillierEncryptedNumber. Exp: [1 2 3], [4 5 6], [7 8 9]
         self.scaling = scaling
         self.size = size
         '''Use for lazy operation'''
+        self.lazy_flag = lazy_flag              # represents if it is in a lazy mode or not
         self.batch_idx_map = None
         self.valid_idx = None
+        self.slot_based_value = []          # used in lazy mode. each element is a list, represents a list of PaillierEncryptedNumber. Exp: [1 4 7], [2 5 8], [3 6 9]
+        # assign value
+        if lazy_flag:
+            self.slot_based_value = value
+        else:
+            self.value = value
     
     def __add__(self, other):
         if not isinstance(self.value, list):
@@ -31,6 +38,42 @@ class BatchEncryptedNumber(object):
             raise NotImplementedError("The shapes of self and other are not equal!")
         value = [v1 * v2 for v1, v2 in zip(self.value, other)]
         return BatchEncryptedNumber(value, self.scaling, self.size)
+
+    def batch_add(self, other):
+        if not self.lazy_flag:
+            if isinstance(other, list) and len(self.value) == len(other):
+                value = [v1 + v2 for v1, v2 in zip(self.value, other)]
+            elif isinstance(other, BatchEncryptedNumber) and len(self.value) == len(other.value):
+                value = [v1 + v2 for v1, v2 in zip(self.value, other.value)]
+            else:
+                raise TypeError("Please check the type of input, should be list or BatchEncryptedNumber. Please check if the shape of inputs are same or not!")
+            return BatchEncryptedNumber(value, self.scaling, self.size)
+        # else:
+        #     if isinstance(other, list) and len(self.value[0]) == len(other):
+
+    def batch_mul(self, other):
+        if not self.lazy_flag:
+            self.to_slot_based_value()
+        value = []
+        for split_idx in range(self.size):
+            value.append([self.slot_based_value[split_idx][value_idx] * other[split_idx][value_idx] for value_idx in range(len(other[0]))])
+        return BatchEncryptedNumber(value, self.scaling, self.size, lazy_flag=True)
+
+    def batch_sum(self):
+        if not self.lazy_flag:
+            sum_value = 0
+            for v in self.value:
+                sum_value = v + sum_value
+            return BatchEncryptedNumber([sum_value], self.scaling, self.size)
+        else:
+            sum_value = []
+            for slot_value_list in self.slot_based_value:
+                temp = 0
+                for v in slot_value_list:
+                    temp = v + temp
+                sum_value.append([temp])
+            return BatchEncryptedNumber(sum_value, self.scaling, self.size, lazy_flag=True)
+
 
     def sum(self, sum_idx=None):
         if not sum_idx:
@@ -53,6 +96,24 @@ class BatchEncryptedNumber(object):
         batch_idx = int(idx / self.size)
         return [idx - batch_idx * self.size, self.value[batch_idx]]
 
+    def to_slot_based_value(self):
+        '''Transform to slot-based value'''
+        if self.lazy_flag:
+            # Current BatchEncryptedNumber has been the lazy mode
+            return
+        if isinstance(self.value, list):
+            # cpu model: self.value is a list of PaillierEncryptedNumber
+            for _ in range(self.size):
+                self.slot_based_value.append([copy.deepcopy(v) for v in self.value])
+        elif isinstance(self.value, PEN_store):
+            # gpu model: self.value is a PEN_store
+            for _ in range(self.size):
+                self.slot_based_value.append(self.value.deep_copy())
+        else:
+            raise NotImplementedError("Current BatchEncryptedNumber.value is not legal!")
+        self.lazy_flag = True
+        self.value = None
+
     def split(self, start_idx, end_idx=None):
         if end_idx:
             return BatchEncryptedNumber(self.value[start_idx : end_idx], self.scaling, self.size)
@@ -61,7 +122,11 @@ class BatchEncryptedNumber(object):
     def merge(self, other):
         if not isinstance(other, BatchEncryptedNumber):
             raise TypeError("The input of merge function should be BatchENcryptedNumber!")
-        self.value.extend(other.value)
+        if not self.lazy_flag:
+            self.value.extend(other.value)
+        else:
+            for split_idx in range(len(self.slot_based_value)):
+                self.slot_based_value[split_idx].extend(other.slot_based_value[split_idx])
 
 class BatchEncryption(object):
     def __init__(self, pub_key=None, private_key=None):
@@ -105,13 +170,36 @@ class BatchEncryption(object):
         encrypted_row_vector = BatchEncryptedNumber(pen_store, scaling, size)
         return encrypted_row_vector
 
-    def gpuBatchDecrypt(self, data:BatchEncryptedNumber, private_key):
-        pen_store = data.value
-        batch_encoding_values = pen_store.decrypt_without_decode(private_key)
-        return batch_encoding_values
-
     def cpuBatchDecrypt(self, data:BatchEncryptedNumber, encoder:BatchEncoder, private_key):
-        batch_decrypt_number_list = [private_key.decrypt_without_decode(v) for v in data.value]
-        batch_encoding_values = [encoder.batchDecode(v.encoding, data.scaling, data.size) for v in batch_decrypt_number_list]
-        return batch_encoding_values
+        if not data.lazy_flag:
+            batch_decrypt_number_list = [private_key.decrypt_without_decode(v) for v in data.value]
+            batch_encoding_values = np.array([encoder.batchDecode(v.encoding, data.scaling, data.size) for v in batch_decrypt_number_list])
+            return batch_encoding_values.reshape(batch_encoding_values.size)
+        else:
+            res = []
+            slot_idx = 0
+            for slot_value_list in data.slot_based_value:
+                batch_decrypt_number_list = [private_key.decrypt_without_decode(v) for v in slot_value_list]
+                batch_encoding_values = [encoder.batchDecode(v.encoding, data.scaling, data.size)[slot_idx] for v in batch_decrypt_number_list]
+                slot_idx += 1
+                res.append(batch_encoding_values)
+            return res
+
+    def gpuBatchDecrypt(self, data:BatchEncryptedNumber, encoder:BatchEncoder, private_key):
+        if not data.lazy_flag:
+            batch_encoding_values = data.value.decrypt_with_batch_decode(private_key, data.scaling, data.size, 
+                                                                            encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits)
+            return batch_encoding_values
+        else:
+            res = []
+            slot_idx = 0
+            split_num = data.slot_based_value[0].store.vec_size
+            for slot_value_list in data.slot_based_value:       # each slot_value_list is a pen_store
+                batch_decrypt_number_list = slot_value_list.decrypt_with_batch_decode(private_key, data.scaling, data.size, 
+                                                                                        encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits)
+                batch_encoding_values = [batch_decrypt_number_list[split_idx * encoder.size + slot_idx] for split_idx in range(split_num)]
+                slot_idx += 1
+                res.append(batch_encoding_values)
+            return res
+
         

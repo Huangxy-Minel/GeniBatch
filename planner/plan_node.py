@@ -54,13 +54,44 @@ class PlanNode(object):
     @staticmethod
     def fromOperator(operator:str, if_remote:bool=False):
         '''
-        Create a node from a operator (ADD, MUL or Merge)
+        Create a node from a operator (batchADD, batchMUL or Merge)
         '''
-        if operator == "ADD" or operator == "MUL" or operator == "Merge" or operator == "SUM":
+        if operator == "batchADD" or operator == "batchMUL" or operator == "Merge" or operator == "batchSUM":
             new_node = PlanNode(operator=operator, if_remote=if_remote)
         else: 
-            raise TypeError("Please check the operation type, just supports ADD, MUL and Merge!")
+            raise TypeError("Please check the operation type, just supports batchADD, batchMUL and Merge!")
         return new_node
+
+    def batchAdd(self, other_vec_node_list, if_remote:bool=False):
+        '''Build batch-wise add operator'''
+        new_operator = PlanNode.fromOperator("batchADD", if_remote=if_remote)
+        new_operator.addChild(self)
+        new_operator.shape = self.shape
+        max_bit_list = [self.max_slot_size]
+        for other_vec_node in other_vec_node_list:
+            new_operator.addChild(other_vec_node)
+            max_bit_list.append(other_vec_node.max_slot_size)
+        new_operator.max_slot_size = max(max_bit_list) + len(max_bit_list) - 1      # update max_slot_size
+        return new_operator
+
+    def batchMul(self, other_vec_node, if_remote:bool=False):
+        '''Build batch-wise mul operator'''
+        if other_vec_node.operator != None:
+            raise TypeError("Inputs should be vector nodes!")
+        new_mul_operator = PlanNode.fromOperator("batchMUL", if_remote=if_remote)     # each batchMUl operator just output 1 element
+        new_mul_operator.addChild(self)   
+        new_mul_operator.addChild(other_vec_node)
+        new_mul_operator.max_slot_size = self.max_slot_size + other_vec_node.max_slot_size   # Adds in MUL matrix operation are ignored
+        new_mul_operator.shape = self.shape
+        return new_mul_operator
+    
+    def batchSum(self, if_remote:bool=False):
+        '''Build batch-wise sum operator'''
+        new_batch_sum_operator = PlanNode.fromOperator("batchSUM", if_remote=if_remote)     # each batchMUl operator just output 1 element
+        new_batch_sum_operator.addChild(self)
+        new_batch_sum_operator.max_slot_size = self.max_slot_size + math.ceil(math.log2(self.shape[1]))
+        new_batch_sum_operator.shape = (1, 1)
+        return new_batch_sum_operator
 
     def getBatchData(self):
         if self.state == 0:
@@ -121,7 +152,6 @@ class PlanNode(object):
             return True
         else:
             return False
-
     
     def splitTree(self, max_element_num, split_num):
         '''
@@ -174,7 +204,6 @@ class PlanNode(object):
                 add_node_idx += 1
             element_idx += max_element_num      # update start idx
 
-
     def recursionUpdateDataIdx(self, max_element_num, split_num):
         if self.operator == None:   # vector node
             if len(self.data_idx_list) == 1:     # vector node which has not been weaved
@@ -184,7 +213,6 @@ class PlanNode(object):
             for child in self.children:
                 child.recursionUpdateDataIdx(max_element_num, split_num)
 
-
     def recursionUpdate(self, max_element_num, element_idx):
         if self.operator == None:   # vector node
             self.shape = (1, max_element_num)
@@ -192,7 +220,7 @@ class PlanNode(object):
             self.data_idx = (matrix_id, vector_id, element_idx, max_element_num)
             # self.batch_data = self.batch_data[element_idx : element_idx + max_element_num - 1]
         else:   # operator node
-            if self.operator == "ADD":
+            if self.operator == "batchADD":
                 self.shape = (1, max_element_num)
             else:
                 raise NotImplementedError("recursionUpdate should only be called at ADD or Vector!")
@@ -205,32 +233,6 @@ class PlanNode(object):
             print(self.operator, end='  ')
         else:
             print(self.encrypted_flag, end='  ')
-
-    def execNode(self):
-        '''
-        Note: will be removed in the future version
-        Execute node function recursively
-        '''
-        if self.state == 1:             # for vector node or operator node which has been executed
-            return self.batch_data
-        else:                           # node has not operated
-            if self.operator == "ADD":
-                self.batch_data = copy.deepcopy(self.children[0].execNode())
-                for i in range(1, self.size):
-                    self.batch_data = self.batch_data + self.children[i].execNode()
-            elif self.operator == "MUL":
-                self.batch_data = copy.deepcopy(self.children[0].execNode())
-                for i in range(1, self.size):
-                    self.batch_data = self.batch_data * self.children[i].execNode()
-                    self.batch_data = self.batch_data.sum()
-            elif self.operator == "Merge":
-                self.batch_data = np.zeros(self.shape)
-                for i in range(0, self.size):
-                   self.batch_data[0][i] = self.children[i].execNode() 
-            else: 
-                raise NotImplementedError("Invalid operator node!")
-            self.state = 1              # change state
-            return self.batch_data
 
     def serialExec(self):
         '''
@@ -279,66 +281,77 @@ class PlanNode(object):
                 unencrypted vector: a list of row vector, which represents an unencoded BatchEncodeNumber
             Therefore, this func will firstly transform unencrypted vector to a list of BatchEncodeNumber, then conduct evaluation
         '''
-        if self.operator == "ADD":
-                if device_type == 'CPU':
-                    self_batch_data = self.children[0].getBatchData()   # a BatchEncryptedNumber
-                    if multi_process_flag:
-                        if max_processes: N_JOBS = max_processes
-                        else: N_JOBS = multiprocessing.cpu_count()
-                        tasks_num_per_proc = math.ceil(len(self_batch_data.value) / N_JOBS)
-                        for other_row_vec in [self.children[i].getBatchData() for i in range(1, self.size)]:
-                            pool = multiprocessing.Pool(processes=N_JOBS)
-                            sub_process = [pool.apply_async(self.cpuADD, (self_batch_data.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 
-                                                                            other_row_vec[idx*tasks_num_per_proc : (idx+1)*tasks_num_per_proc], encoder,)) 
-                                                                                                                        for idx in range(N_JOBS-1)]
-                            sub_process.append(pool.apply_async(self.cpuADD, (self_batch_data.split((N_JOBS-1)*tasks_num_per_proc), 
-                                                                                other_row_vec[(N_JOBS-1)*tasks_num_per_proc:], encoder,)))
-                            pool.close()
-                            pool.join()
-                            res = [p.get() for p in sub_process]
-                            # merge res
-                            self_batch_data = res[0]
-                            for i in range(1, len(res)):
-                                self_batch_data.merge(res[i])
-                    else:
-                        for other_row_vec in [self.children[i].getBatchData() for i in range(1, self.size)]:
-                            self_batch_data = self.cpuADD(self_batch_data, other_row_vec, encoder)
-                    self.batch_data = self_batch_data
-                elif device_type == 'GPU':
-                    self.gpuADD(encoder)
+        if self.operator == "batchADD":
+            self_batch_data = self.children[0].getBatchData()   # a BatchEncryptedNumber
+            if device_type == 'CPU':
+                if multi_process_flag:
+                    if max_processes: N_JOBS = max_processes
+                    else: N_JOBS = multiprocessing.cpu_count()
+                    tasks_num_per_proc = math.ceil(len(self_batch_data.value) / N_JOBS)
+                    for other_row_vec in [self.children[i].getBatchData() for i in range(1, self.size)]:
+                        pool = multiprocessing.Pool(processes=N_JOBS)
+                        sub_process = [pool.apply_async(self.cpuBatchADD, (self_batch_data.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 
+                                                                        other_row_vec[idx*tasks_num_per_proc : (idx+1)*tasks_num_per_proc], encoder,)) 
+                                                                                                                    for idx in range(N_JOBS-1)]
+                        sub_process.append(pool.apply_async(self.cpuBatchADD, (self_batch_data.split((N_JOBS-1)*tasks_num_per_proc), 
+                                                                            other_row_vec[(N_JOBS-1)*tasks_num_per_proc:], encoder,)))
+                        pool.close()
+                        pool.join()
+                        res = [p.get() for p in sub_process]
+                        # merge res
+                        self_batch_data = res[0]
+                        for i in range(1, len(res)):
+                            self_batch_data.merge(res[i])
                 else:
-                    raise NotImplementedError("Only support CPU & GPU device!")
-            # print(self.batch_data)
-        elif self.operator == "MUL":
+                    for other_row_vec in [self.children[i].getBatchData() for i in range(1, self.size)]:
+                        self_batch_data = self.cpuBatchADD(self_batch_data, other_row_vec, encoder)
+                self.batch_data = self_batch_data
+            elif device_type == 'GPU':
+                self.batch_data = self.gpuBatchADD(self_batch_data, encoder)
+            else:
+                raise NotImplementedError("Only support CPU & GPU device!")
+        # print(self.batch_data)
+
+        elif self.operator == "batchMUL":
             if self.size > 2:
                 raise NotImplementedError("Current version only supports mul with one vector!")
+            batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
+            other_batch_data = self.children[1].getBatchData()
             if device_type == 'CPU':
-                batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
-                other_batch_data = self.children[1].getBatchData()
                 if multi_process_flag:
                     if max_processes: N_JOBS = max_processes
                     else: N_JOBS = multiprocessing.cpu_count()
                     tasks_num_per_proc = math.ceil(len(batch_encrypted_vec.value) / N_JOBS)
                     pool = multiprocessing.Pool(processes=N_JOBS)
-                    sub_process = [pool.apply_async(self.cpuMUL, (batch_encrypted_vec.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 
+                    sub_process = [pool.apply_async(self.cpuBatchMUL, (batch_encrypted_vec.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 
                                                                     other_batch_data[idx*tasks_num_per_proc : (idx+1)*tasks_num_per_proc], encoder,)) 
                                                                                                                 for idx in range(N_JOBS-1)]
-                    sub_process.append(pool.apply_async(self.cpuMUL, (batch_encrypted_vec.split((N_JOBS-1)*tasks_num_per_proc), 
+                    sub_process.append(pool.apply_async(self.cpuBatchMUL, (batch_encrypted_vec.split((N_JOBS-1)*tasks_num_per_proc), 
                                                                         other_batch_data[(N_JOBS-1)*tasks_num_per_proc:], encoder,)))
                     pool.close()
                     pool.join()
-                    res = [p.get() for p in sub_process]
+                    res = [p.get() for p in sub_process]    # a list of BatchEncryptedNumber, which are in the lazy mode
                     # merge res
                     self_batch_data = res[0]
                     for i in range(1, len(res)):
-                        self_batch_data = [self_batch_data[split_idx] + res[i][split_idx] for split_idx in range(len(self_batch_data))]
+                        self_batch_data.merge(res[i])
                     self.batch_data = self_batch_data
                 else:
-                    self.batch_data = self.cpuMUL(batch_encrypted_vec, other_batch_data, encoder)
+                    self.batch_data = self.cpuBatchMUL(batch_encrypted_vec, other_batch_data, encoder)
             elif device_type == 'GPU':
-                self.gpuMUL(encoder)
+                self.batch_data = self.gpuBatchMUL(batch_encrypted_vec, other_batch_data, encoder)
             else:
                 raise NotImplementedError("Only support CPU & GPU device!")
+
+        elif self.operator == "batchSUM":
+            batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
+            if device_type == 'CPU':
+                self.batch_data = self.cpuBatchSUM(batch_encrypted_vec)
+            elif device_type == 'GPU':
+                self.batch_data = self.gpuBatchSUM(batch_encrypted_vec)
+            else:
+                raise NotImplementedError("Only support CPU & GPU device!")
+
         elif self.operator == "Merge":
             self.batch_data = []
             for i in range(self.size):
@@ -357,15 +370,13 @@ class PlanNode(object):
         return self.batch_data
 
     @staticmethod
-    def cpuADD(self_batch_data, other_row_vec, encoder:BatchEncoder):
+    def cpuBatchADD(self_encrypted_vec:BatchEncryptedNumber, other_row_vec, encoder:BatchEncoder):
         '''
             Execute ADD operator, sum self_batch_data and other_row_vec
             Batch data of each children: a list of PaillierEncryptedNumber, store in BatchEncryptedNumber.value
         '''
         '''Init scaling'''
-        if not isinstance(self_batch_data, BatchEncryptedNumber):
-            raise NotImplementedError("First child of each node must be encrypted!")
-        scaling = self_batch_data.scaling
+        scaling = self_encrypted_vec.scaling
         # encode firstly
         other_batch_data = [encoder.batchEncode(split_row_vec) for split_row_vec in other_row_vec]    # a list of BatchEncoderNumber
         '''Re-scaling'''
@@ -373,41 +384,39 @@ class PlanNode(object):
             other_batch_data = [v * int(encoder.scaling / scaling) for v in other_batch_data]
         elif scaling > encoder.scaling:
             raise NotImplementedError("The scaling of ADD inputs is invalid!")
-        self_batch_data = self_batch_data + other_batch_data
-        return self_batch_data
+        res = self_encrypted_vec.batch_add(other_batch_data)
+        return res
 
-    def gpuADD(self, encoder:BatchEncoder):
+    def gpuBatchADD(self, self_batch_data:BatchEncryptedNumber, encoder:BatchEncoder):
         '''
             Execute ADD operator, sum batch_data of all children
             Batch data of each children: PEN_store, store in BatchEncryptedNumber.value
         '''
-        self.batch_data = self.children[0].getBatchData()   # a BatchEncryptedNumber
         '''Init scaling'''
-        if not isinstance(self.batch_data, BatchEncryptedNumber):
+        if not isinstance(self_batch_data, BatchEncryptedNumber):
             raise NotImplementedError("First child of each node must be encrypted!")
-        scaling = self.batch_data.scaling
+        scaling = self_batch_data.scaling
+        res = self_batch_data.value     # PEN_store
         for i in range(1, self.size):
             other_batch_data = np.array(self.children[i].getBatchData())
             other_batch_data = other_batch_data.reshape(other_batch_data.size)
-            fpn_store_with_batch = FPN_store.batch_encode(other_batch_data, encoder.scaling, encoder.size, encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits, self.batch_data.value.pub_key)
+            fpn_store_with_batch = FPN_store.batch_encode(other_batch_data, encoder.scaling, encoder.size, encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits, self_batch_data.value.pub_key)
             '''Re-scaling'''
             if scaling < encoder.scaling:
                 fpn_store_with_batch = fpn_store_with_batch * (encoder.scaling / scaling)
             elif scaling > encoder.scaling:
                 raise NotImplementedError("The scaling of ADD inputs is invalid!")
-            self.batch_data.value = self.batch_data.value + fpn_store_with_batch
+            res = res + fpn_store_with_batch    # PEN_store
+        return BatchEncryptedNumber(res, scaling, self_batch_data.size)
 
     @staticmethod
-    def cpuMUL(self_encrypted_vec, other_batch_data, encoder:BatchEncoder):
+    def cpuBatchMUL(self_encrypted_vec:BatchEncryptedNumber, other_batch_data, encoder:BatchEncoder):
         '''
             Execute MUL operator, mul batch data of all children
             Batch data of each children: a list of PaillierEncryptedNumber, store in BatchEncryptedNumber.value
             Logic: copy encrypted batch data, mul with corresponded cofficients, then sum
         '''
-        if not isinstance(self_encrypted_vec, BatchEncryptedNumber):
-            raise NotImplementedError("First child of each node must be encrypted!")
         scaling = self_encrypted_vec.scaling
-        batch_data = [copy.deepcopy(self_encrypted_vec) for _ in range(encoder.size)]  # copy 
         # update scaling
         scaling *= encoder.scaling
         # mul with coefficients
@@ -416,30 +425,38 @@ class PlanNode(object):
             coefficients = [v[split_idx] for v in other_batch_data]
             coefficients = encoder.scalarEncode(coefficients)       # encode
             coefficients_list.append(coefficients)
-        batch_data = [(batch_data[split_idx] * coefficients_list[split_idx]).sum() for split_idx in range(encoder.size)]
-        return [BatchEncryptedNumber(batch_data[num], scaling, self_encrypted_vec.size) for num in range(encoder.size)]
+        res = self_encrypted_vec.batch_mul(coefficients_list)
+        res.scaling = scaling
+        return res
 
-    def gpuMUL(self, encoder:BatchEncoder):
+    def gpuBatchMUL(self, self_batch_data:BatchEncryptedNumber, other_batch_data, encoder:BatchEncoder):
         '''
             Execute MUL operator, mul batch data of all children
             Batch data of each children: PEN_store, store in BatchEncryptedNumber.value
             Logic: copy encrypted batch data, mul with corresponded cofficients, then sum
         '''
-        batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
-        if not isinstance(batch_encrypted_vec, BatchEncryptedNumber):
-            raise NotImplementedError("First child of each node must be encrypted!")
-        scaling = batch_encrypted_vec.scaling
-        pen_store = batch_encrypted_vec.value
-        batch_data = [pen_store.deep_copy() for _ in range(encoder.size)]     # copy
+        scaling = self_batch_data.scaling
+        pub_key = self_batch_data.value.pub_key
+        if not self_batch_data.lazy_flag:
+            self_batch_data.to_slot_based_value()
         '''Start multiplication'''
         scaling *= encoder.scaling
-        other_batch_data = self.children[1].getBatchData()
         coefficients_list = []
         # quantization encode
         for split_idx in range(encoder.size):
             coefficients = [v[split_idx] for v in other_batch_data]
-            coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, batch_data[split_idx].pub_key)       # encode
+            coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, pub_key)       # encode
             coefficients_list.append(coefficients)
-        batch_data = [(batch_data[split_idx] * coefficients_list[split_idx]).sum() for split_idx in range(encoder.size)]    # use multi-threads to call the GPU
-        self.batch_data = [BatchEncryptedNumber(batch_data[num], scaling, batch_encrypted_vec.size) for num in range(encoder.size)]
+        
+        batch_data = [self_batch_data.slot_based_value[split_idx] * coefficients_list[split_idx] for split_idx in range(encoder.size)]    # use multi-threads to call the GPU
+        return BatchEncryptedNumber(batch_data, scaling, self_batch_data.size, lazy_flag=True)
 
+    @staticmethod
+    def cpuBatchSUM(self_encrypted_vec:BatchEncryptedNumber):
+        '''Sum self_encrypted_vec.value or self_encrypted_vec.slot_based_value'''
+        res = self_encrypted_vec.batch_sum()
+        return res
+    
+    def gpuBatchSUM(self, self_batch_data:BatchEncryptedNumber):
+        sum_value = [self_batch_data.slot_based_value[split_idx].sum() for split_idx in range(self_batch_data.size)]
+        return BatchEncryptedNumber(sum_value, self_batch_data.scaling, self_batch_data.size, lazy_flag=True)

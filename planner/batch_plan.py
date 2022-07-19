@@ -14,12 +14,13 @@ import multiprocessing
 
 class BatchPlan(object):
     '''
-    version 2.1:
+    version 2.2:
 
     Purpose: Describe the computational topology: DAG.
 
     Description: 
         Provide common encrypted matrix operator such as Add and Multiplication.
+        Two types of operators: batch-wise operator & slot-wise operator
         Create before calculation and lazy operate.
         Weave the current DAG to get a batch sheme, other parties can encrypt the share vector using this batch scheme.
         During execution, the memory of each slot of a batch number is enough. Therefore, no overflow in execution process.
@@ -119,24 +120,18 @@ class BatchPlan(object):
             if self.matrix_shape != BatchPlanB.matrix_shape:
                 raise NotImplementedError("Input shapes are different!")
             '''Merge two BatchPlans'''
-            # self.vector_nodes_list += BatchPlanB.vector_nodes_list
             other_BatchPlans.append(BatchPlanB)
 
         # Construct computational relationships
-        add_nodes_list = []
         for row_id in range(self.matrix_shape[0]):
-            new_opera_node = PlanNode.fromOperator("ADD", if_remote=if_remote)
-            new_opera_node.addChild(self.root_nodes[row_id])       # add one row vector of self as a child of new operator
-            new_opera_node.shape = self.root_nodes[row_id].shape   # add operation does not change shape
-            max_bit_list = [self.root_nodes[row_id].max_slot_size]
+            # Construct batch-wise add for each row_vec
+            other_vec_list = []
             for iter_plan in other_BatchPlans:
-                # if iter_plan.encrypted_flag:
-                #     self.encrypted_flag = True
-                new_opera_node.addChild(iter_plan.root_nodes[row_id])
-                max_bit_list.append(iter_plan.root_nodes[row_id].max_slot_size)
-            new_opera_node.max_slot_size = max(max_bit_list) + len(max_bit_list) - 1     # update the current max slot bits
-            add_nodes_list.append(new_opera_node)
-            self.root_nodes[row_id] = new_opera_node    # replace root node
+                other_vec_list.append(iter_plan.root_nodes[row_id])
+            # Create operator
+            new_operator = self.root_nodes[row_id].batchAdd(other_vec_list, if_remote)
+            # update root nodes
+            self.root_nodes[row_id] = new_operator
         self.add_times += 1
         # self.opera_nodes_list.append(add_nodes_list)   # record the operation level
 
@@ -146,49 +141,41 @@ class BatchPlan(object):
         Input: matrix_list: list of np.ndarray; each matrix should be 2-D array
         Note: matrix in matrix_list must be unenrypted, the encrypted matrix can multiple for only once
         '''
+        # merge matrix_list firstly
+        matrixB = matrix_list[0]
+        for matrix_idx in range(1, len(matrix_list)):
+            matrixB = matrixB.dot(matrix_list[matrix_idx])
         # check inputs
-        other_BatchPlans = []
-        last_output_shape = self.matrix_shape   # use to check input shape
-        for matrixB in matrix_list:
-            if isinstance(matrixB, np.ndarray):
-                BatchPlanB = BatchPlan(self.data_storage, vector_mem_size=self.vector_mem_size, element_mem_size=self.element_mem_size)
-                BatchPlanB.fromMatrix(matrixB.T)    # transform col vector to row vector
-            else:
-                raise TypeError("Input of matrixAdd should be ndarray!")
-            # check shape
-            if last_output_shape[1] != BatchPlanB.matrix_shape[1]:
-                raise NotImplementedError("Input shapes are different!")
-            '''Merge two BatchPlans'''
-            # self.vector_nodes_list += BatchPlanB.vector_nodes_list
-            other_BatchPlans.append(BatchPlanB)
-            last_output_shape = (last_output_shape[0], BatchPlanB.matrix_shape[0])
+        if isinstance(matrixB, np.ndarray):
+            BatchPlanB = BatchPlan(self.data_storage, vector_mem_size=self.vector_mem_size, element_mem_size=self.element_mem_size)
+            BatchPlanB.fromMatrix(matrixB.T)    # transform col vector to row vector
+        else:
+            raise TypeError("Input of matrixMul should be ndarray!")
+        # check shape
+        if self.matrix_shape[1] != BatchPlanB.matrix_shape[1]:
+            raise NotImplementedError("Input shapes are different!")
         
-        for BatchPlanB in other_BatchPlans:
-            mul_nodes_list = []
-            merge_nodes_list = []
-            # Construct computational relationships
-            for row_id in range(self.matrix_shape[0]):
-                new_merge_node = PlanNode.fromOperator("Merge", if_remote=if_remote)
-                for col_id in range(BatchPlanB.matrix_shape[0]):           # for each row vector of self, it should be times for col_num of matrixB
-                    new_mul_operator = PlanNode.fromOperator("MUL")     # each MUl operator just output 1 element
-                    new_mul_operator.addChild(self.root_nodes[row_id])   
-                    new_mul_operator.addChild(BatchPlanB.root_nodes[col_id])
-                    new_mul_operator.max_slot_size = self.root_nodes[row_id].max_slot_size + BatchPlanB.root_nodes[col_id].max_slot_size   # Adds in MUL matrix operation are ignored
-                    new_mul_operator.shape = (1,1)
-                    new_merge_node.addChild(new_mul_operator)           # using merge operator splice elements from MUL operators
-                    if new_merge_node.max_slot_size < new_mul_operator.max_slot_size:
-                        new_merge_node.max_slot_size = new_mul_operator.max_slot_size
-                    mul_nodes_list.append(new_mul_operator)
-                new_merge_node.shape = (1, BatchPlanB.matrix_shape[0])
-                merge_nodes_list.append(new_merge_node)
-                self.root_nodes[row_id] = new_merge_node
+        merge_nodes_list = []
+        # Construct computational relationships
+        for row_id in range(self.matrix_shape[0]):
+            new_merge_node = PlanNode.fromOperator("Merge", if_remote=if_remote)
+            for col_id in range(BatchPlanB.matrix_shape[0]):           # for each row vector of self, it should be times for col_num of matrixB
+                new_mul_operator = self.root_nodes[row_id].batchMul(BatchPlanB.root_nodes[col_id])
+                new_batch_sum_operator = new_mul_operator.batchSum()
+                new_merge_node.addChild(new_batch_sum_operator)           # using merge operator splice elements from MUL operators
+                if new_merge_node.max_slot_size < new_batch_sum_operator.max_slot_size:
+                    new_merge_node.max_slot_size = new_batch_sum_operator.max_slot_size
+            new_merge_node.shape = (1, BatchPlanB.matrix_shape[0])
+            merge_nodes_list.append(new_merge_node)
+            self.root_nodes[row_id] = new_merge_node
 
-            # modify current batch plan shape
-            self.matrix_shape = (self.matrix_shape[0], BatchPlanB.matrix_shape[0])
+        # modify current batch plan shape
+        self.matrix_shape = (self.matrix_shape[0], BatchPlanB.matrix_shape[0])
         # self.opera_nodes_list.append(mul_nodes_list)
         # self.opera_nodes_list.append(merge_nodes_list)
         self.merge_nodes = merge_nodes_list
         self.mul_times += 1
+
 
     def splitSum(self, sum_idx_list:list):
         '''
@@ -215,7 +202,6 @@ class BatchPlan(object):
         if self.batch_scheme == []:
             # handle BatchPlan which contains MUL operator
             for merge_node in self.merge_nodes:
-                merge_node.max_slot_size += math.ceil(math.log2(self.vector_size))          # elements will sum up in matrix mul
                 self.encode_sign_bits = merge_node.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
                 self.encode_sign_bits += 8 - self.encode_sign_bits % 8
                 merge_node.max_slot_size = self.encode_sign_bits + self.element_mem_size
@@ -385,7 +371,7 @@ class BatchPlan(object):
                 private_key: used in decrypt
         '''
         if self.device_type == 'CPU':
-            if self.multi_process_flag and len(encrypted_data.value) > multiprocessing.cpu_count():
+            if self.multi_process_flag and (not encrypted_data.lazy_flag) and len(encrypted_data.value) > multiprocessing.cpu_count():
                 # use multi-processes
                 if self.max_processes:
                     N_JOBS = self.max_processes
@@ -403,14 +389,11 @@ class BatchPlan(object):
                 plaintext_row_vec =[]
                 for p in sub_process:
                     temp = np.array(p.get())
-                    plaintext_row_vec.extend(temp.reshape(temp.size))
+                    plaintext_row_vec.extend(temp)
             else:
                 plaintext_row_vec = self.encrypter.cpuBatchDecrypt(encrypted_data, self.encoder, private_key)
-                plaintext_row_vec = np.array(plaintext_row_vec)
-                plaintext_row_vec = plaintext_row_vec.reshape(plaintext_row_vec.size)
         elif self.device_type == 'GPU':
-            plaintext_row_vec = encrypted_data.value.decrypt_with_batch_decode(private_key, encrypted_data.scaling, encrypted_data.size, 
-                                                                            self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits)
+            plaintext_row_vec = self.encrypter.gpuBatchDecrypt(encrypted_data, self.encoder, private_key)
         return plaintext_row_vec
 
     def serialExec(self):

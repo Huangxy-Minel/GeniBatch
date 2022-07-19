@@ -72,9 +72,9 @@ def encrypt_decrypt_with_gpu_encode():
 
 def encrypted_add():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=False)
-    matrixA = np.random.uniform(-1, 1, (1, 1000000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 1000000))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='GPU', multi_process_flag=True, max_processes=40)
+    matrixA = np.random.uniform(-1, 1, (1, 100))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 100))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
@@ -119,7 +119,7 @@ def encrypted_add():
 
 def encrypted_mul():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True, max_processes=None)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=True, max_processes=None)
     matrixA = np.random.uniform(-1, 1, (1, 10000))     # ciphertext
     matrixB = np.random.uniform(-1, 1, (1, 10000))
     matrixC = np.random.uniform(-1, 1, (10000, 1))     # plaintext
@@ -129,7 +129,7 @@ def encrypted_mul():
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
-    # myBatchPlan.matrixAdd([matrixB], [False])
+    myBatchPlan.matrixAdd([matrixB], [False])
     myBatchPlan.matrixMul([matrixC])
     print("\n-------------------Batch Plan before weave:-------------------")
     myBatchPlan.printBatchPlan()
@@ -159,11 +159,11 @@ def encrypted_mul():
     for output in outputs:
         # each output represent the output of one root node
         row_vec = []
-        for element in output:
+        for BatchEncryptedNumber in output:
             real_res = 0
-            for batch_encrypted_number_idx in range(len(element)):
-                temp = myBatchPlan.decrypt(element[batch_encrypted_number_idx], encrypter.privacy_key)
-                real_res += temp[batch_encrypted_number_idx]
+            plain_vec = myBatchPlan.decrypt(BatchEncryptedNumber, encrypter.privacy_key)
+            for element_vec in plain_vec:
+                real_res += sum(element_vec)
             row_vec.append(real_res)
         res.append(row_vec)
     outputs = res
@@ -175,7 +175,7 @@ def encrypted_mul():
     print("\n-------------------Batch Plan output:-------------------")
     print(output_matrix)
     print("\n-------------------Numpy output:-------------------")
-    result = (matrixA).dot(matrixC)
+    result = (matrixA + matrixB).dot(matrixC)
     print(result)
     if np.allclose(output_matrix, result):
         print("\n-------------------Test Pass!-------------------")
@@ -290,7 +290,7 @@ def split_sum():
     matrixA = np.random.uniform(-1, 1, (1, 1000))     # ciphertext
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
-    myBatchPlan.splitSum([[1, 11, 111]])
+    myBatchPlan.splitSum([[1, 11, 111], [2, 22, 222]])
     myBatchPlan.weave()
     batch_scheme = myBatchPlan.getBatchScheme()
     max_element_num, split_num = batch_scheme[0]
@@ -325,9 +325,10 @@ def split_sum():
             real_res = 0
             for batch_idx, split_idx in enumerate(valid_idx):
                 real_res += plaintext[batch_idx*split_sum_res.size + split_idx]
-            print(real_res)
             row_vec.append(real_res)
         res.append(row_vec)
+    print(res[0])
     print(matrixA[0][1] + matrixA[0][11] + matrixA[0][111])
+    print(matrixA[0][2] + matrixA[0][22] + matrixA[0][222])
 
-split_sum()
+encrypted_add()
