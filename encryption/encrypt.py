@@ -74,6 +74,11 @@ class BatchEncryptedNumber(object):
                 sum_value.append([temp])
             return BatchEncryptedNumber(sum_value, self.scaling, self.size, lazy_flag=True)
 
+    def shift_add(self, other, slot_idx):
+        '''Current version: other should be a BatchEncodeNumber (a big integer)'''
+        if not self.lazy_flag:
+            self.to_slot_based_value()
+        self.slot_based_value[slot_idx] = other + self.slot_based_value[slot_idx]
 
     def sum(self, sum_idx=None):
         if not sum_idx:
@@ -95,7 +100,8 @@ class BatchEncryptedNumber(object):
     def get_batch_value(self, idx=None):
         '''Return batch number value given element idx'''
         if idx and not self.lazy_flag:
-            return self.value[int(idx / self.size)]
+            batch_idx = int(idx / self.size)
+            return (self.value[batch_idx], idx - batch_idx * self.size)
 
 
     def get_batch_num_with_idx(self, idx):

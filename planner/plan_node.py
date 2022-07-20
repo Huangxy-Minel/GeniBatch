@@ -392,9 +392,6 @@ class PlanNode(object):
             Execute ADD operator, sum batch_data of all children
             Batch data of each children: PEN_store, store in BatchEncryptedNumber.value
         '''
-        '''Init scaling'''
-        if not isinstance(self_batch_data, BatchEncryptedNumber):
-            raise NotImplementedError("First child of each node must be encrypted!")
         scaling = self_batch_data.scaling
         res = self_batch_data.value     # PEN_store
         for i in range(1, self.size):
