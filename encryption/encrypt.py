@@ -97,11 +97,13 @@ class BatchEncryptedNumber(object):
                     res[split_idx] = v + res[split_idx]
             return res
 
-    def get_batch_value(self, idx=None):
+    def get_batch_value(self, idx):
         '''Return batch number value given element idx'''
-        if idx and not self.lazy_flag:
+        if not self.lazy_flag:
             batch_idx = int(idx / self.size)
             return (self.value[batch_idx], idx - batch_idx * self.size)
+        else:
+            raise NotImplementedError("Currently only support common mode, instead of lazy operation mode!")
 
 
     def get_batch_num_with_idx(self, idx):
