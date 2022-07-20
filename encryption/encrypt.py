@@ -92,6 +92,12 @@ class BatchEncryptedNumber(object):
                     res[split_idx] = v + res[split_idx]
             return res
 
+    def get_batch_value(self, idx=None):
+        '''Return batch number value given element idx'''
+        if idx and not self.lazy_flag:
+            return self.value[int(idx / self.size)]
+
+
     def get_batch_num_with_idx(self, idx):
         batch_idx = int(idx / self.size)
         return [idx - batch_idx * self.size, self.value[batch_idx]]

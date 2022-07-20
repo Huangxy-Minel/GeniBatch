@@ -176,18 +176,18 @@ class BatchPlan(object):
         self.merge_nodes = merge_nodes_list
         self.mul_times += 1
 
-
-    def splitSum(self, sum_idx_list:list):
+    def shiftSum(self, sum_idx_list:list):
         '''
             Sum self with index
             sum_idx_list: 2-D array, each element such as [[1, 3, 5]] means self.batch_data[1] + self.batch_data[3] + self.batch_data[5]
             Currently only support row vector
         '''
+        if self.matrix_shape[0] > 1:
+            raise NotImplementedError("Currently only support shiftSum row vector")
         for row_id in range(self.matrix_shape[0]):
-            new_opera_node = PlanNode.fromOperator("SUM")
+            new_opera_node = PlanNode.fromOperator("shiftSUM")
             new_opera_node.addChild(self.root_nodes[row_id])
-            new_opera_node.shape = (1, len(sum_idx_list))
-            new_opera_node.sum_idx_list = sum_idx_list
+            new_opera_node.shape = (1, 1)
             new_opera_node.max_slot_size = self.element_mem_size + math.ceil(math.log2(self.vector_size))
             self.root_nodes[row_id] = new_opera_node
         self.sum_times += 1

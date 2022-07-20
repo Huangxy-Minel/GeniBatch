@@ -121,9 +121,9 @@ def encrypted_add():
 def encrypted_mul():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=False, max_processes=None)
-    matrixA = np.random.uniform(-1, 1, (1, 3000000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 3000000))
-    matrixC = np.random.uniform(-1, 1, (3000000, 1))     # plaintext
+    matrixA = np.random.uniform(-1, 1, (1, 3000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 3000))
+    matrixC = np.random.uniform(-1, 1, (3000, 1))     # plaintext
     matrixA = matrixA.astype(np.float32)
     matrixB = matrixB.astype(np.float32)
     matrixC = matrixC.astype(np.float32)
@@ -131,6 +131,7 @@ def encrypted_mul():
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
     myBatchPlan.matrixAdd([matrixB], [False])
+    fore_gradient_node = myBatchPlan.root_nodes[0]
     myBatchPlan.matrixMul([matrixC])
     print("\n-------------------Batch Plan before weave:-------------------")
     myBatchPlan.printBatchPlan()
@@ -158,6 +159,7 @@ def encrypted_mul():
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")
     outputs = myBatchPlan.parallelExec()
+    print(fore_gradient_node.getBatchData().slot_based_value)
     '''Decrypt & shift sum'''
     res = []
     for output in outputs:

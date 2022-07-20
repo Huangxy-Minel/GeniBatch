@@ -56,7 +56,7 @@ class PlanNode(object):
         '''
         Create a node from a operator (batchADD, batchMUL or Merge)
         '''
-        if operator == "batchADD" or operator == "batchMUL" or operator == "Merge" or operator == "batchSUM":
+        if operator == "batchADD" or operator == "batchMUL" or operator == "Merge" or operator == "batchSUM" or operator == "shiftSUM":
             new_node = PlanNode(operator=operator, if_remote=if_remote)
         else: 
             raise TypeError("Please check the operation type, just supports batchADD, batchMUL and Merge!")
