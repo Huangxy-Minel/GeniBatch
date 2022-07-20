@@ -48,8 +48,15 @@ class BatchEncryptedNumber(object):
             else:
                 raise TypeError("Please check the type of input, should be list or BatchEncryptedNumber. Please check if the shape of inputs are same or not!")
             return BatchEncryptedNumber(value, self.scaling, self.size)
-        # else:
-        #     if isinstance(other, list) and len(self.value[0]) == len(other):
+        else:
+            if isinstance(other, BatchEncryptedNumber) and len(self.slot_based_value) == len(other.slot_based_value) and other.lazy_flag:
+                value = []
+                for slot_idx in range(self.size):
+                    slot_add_value = [v1 + v2 for v1, v2 in zip(self.slot_based_value[slot_idx], other.slot_based_value[slot_idx])]
+                    value.append(slot_add_value)
+            else:
+                raise TypeError("At lazy operation mode, batch_add func only supports to add with a BatchEncryptedNumber")
+            return BatchEncryptedNumber(value, self.scaling, self.size, lazy_flag=True)
 
     def batch_mul(self, other):
         if not self.lazy_flag:
