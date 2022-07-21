@@ -199,9 +199,13 @@ class BatchEncryption(object):
         else:
             res = []
             slot_idx = 0
+            batch_encoding_values = []
             for slot_value_list in data.slot_based_value:
-                batch_decrypt_number_list = [private_key.decrypt_without_decode(v) for v in slot_value_list]
-                batch_encoding_values = [encoder.batchDecode(v.encoding, data.scaling, data.size)[slot_idx] for v in batch_decrypt_number_list]
+                for slot_value in slot_value_list:
+                    if slot_value == 0: batch_encoding_values.append(0)
+                    else:
+                        batch_decrypt_num = private_key.decrypt_without_decode(slot_value)
+                        batch_encoding_values.append(encoder.batchDecode(batch_decrypt_num.encoding, data.scaling, data.size)[slot_idx])
                 slot_idx += 1
                 res.append(batch_encoding_values)
             return res
