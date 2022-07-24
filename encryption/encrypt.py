@@ -102,8 +102,8 @@ class BatchEncryptedNumber(object):
 
     def shift_add(self, other, slot_idx, element_idx):
         '''Current version: other should be a BatchEncodeNumber (a big integer)'''
-        if not self.lazy_flag:
-            self.to_slot_based_value()
+        # if not self.lazy_flag:
+        #     self.to_slot_based_value()
         self.slot_based_value[slot_idx][element_idx] = other + self.slot_based_value[slot_idx][element_idx]
 
     def sum(self, sum_idx=None):
@@ -218,8 +218,8 @@ class BatchEncryption(object):
         else:
             res = []
             slot_idx = 0
-            batch_encoding_values = []
             for slot_value_list in data.slot_based_value:
+                batch_encoding_values = []
                 for slot_value in slot_value_list:
                     if slot_value == 0: batch_encoding_values.append(0)
                     else:

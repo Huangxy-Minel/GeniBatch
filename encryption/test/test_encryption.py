@@ -3,7 +3,7 @@ import time
 from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
-from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption
+from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryptedNumber, BatchEncryption
 from federatedml.secureprotol.fate_paillier import PaillierKeypair, PaillierPublicKey, PaillierPrivateKey
 
 from federatedml.secureprotol import PaillierEncrypt
@@ -290,13 +290,13 @@ def lr_procedure():
         print("\n-------------------Test Fail-------------------")
         print(output_matrix == result)
 
-def split_sum():
+def shift_sum():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True, max_processes=None)
-    matrixA = np.random.uniform(-1, 1, (1, 1000))     # ciphertext
+    matrixA = np.random.uniform(-1, 1, (1, 2))     # ciphertext
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
-    myBatchPlan.splitSum([[1, 11, 111], [2, 22, 222]])
+    myBatchPlan.shiftSum([1,1,1])
     myBatchPlan.weave()
     batch_scheme = myBatchPlan.getBatchScheme()
     max_element_num, split_num = batch_scheme[0]
@@ -311,30 +311,20 @@ def split_sum():
     encrypter.generate_key()
     myBatchPlan.setEncrypter()
     encrypted_row_vec = myBatchPlan.encrypt(matrixA, batch_scheme[0], encrypter.public_key)
-    '''Assign encrypted vector'''
-    myBatchPlan.assignEncryptedVector(0, 0, encrypted_row_vec)
-    print("\n-------------------Begin to exec Batch Plan.-------------------")
-    outputs = myBatchPlan.parallelExec()
-    res = []
-    for output in outputs:
-        row_vec = []
-        for split_sum_res in output:
-            # reshape
-            temp = []
-            valid_idx = []
-            for idx in range(len(split_sum_res.value)):
-                if split_sum_res.value[idx] != 0: 
-                    temp.append(split_sum_res.value[idx])
-                    valid_idx.append(idx)
-            split_sum_res.value = temp
-            plaintext = myBatchPlan.decrypt(split_sum_res, encrypter.privacy_key)
-            real_res = 0
-            for batch_idx, split_idx in enumerate(valid_idx):
-                real_res += plaintext[batch_idx*split_sum_res.size + split_idx]
-            row_vec.append(real_res)
-        res.append(row_vec)
-    print(res[0])
-    print(matrixA[0][1] + matrixA[0][11] + matrixA[0][111])
-    print(matrixA[0][2] + matrixA[0][22] + matrixA[0][222])
+    batch_size = encrypted_row_vec.size
+    batch_scaling = encrypted_row_vec.scaling
+    res = BatchEncryptedNumber([[0] for _ in range(batch_size)], batch_scaling, batch_size, lazy_flag=True)
+    print(res.slot_based_value)
+    for rid in range(matrixA.size):
+        v, slot_idx = encrypted_row_vec.get_batch_value(rid)
+        res.shift_add(v, slot_idx, 0)
+    '''Decrypt'''
+    print("\n-------------------Decryption:-------------------")
+    slot_based_v_sum = myBatchPlan.decrypt(res, encrypter.privacy_key)
+    # print(slot_based_v_sum)
+    v_sum = 0
+    for slot_v_list in slot_based_v_sum: v_sum += slot_v_list[0]
+    print(v_sum)
+    print(matrixA.sum())
 
-encrypted_mul()
+shift_sum()
