@@ -293,7 +293,7 @@ def lr_procedure():
 def shift_sum():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='CPU', multi_process_flag=True, max_processes=None)
-    matrixA = np.random.uniform(-1, 1, (1, 2))     # ciphertext
+    matrixA = np.random.uniform(-1, 1, (1, 10000))     # ciphertext
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
     myBatchPlan.shiftSum([1,1,1])
@@ -318,13 +318,17 @@ def shift_sum():
     for rid in range(matrixA.size):
         v, slot_idx = encrypted_row_vec.get_batch_value(rid)
         res.shift_add(v, slot_idx, 0)
+    shift_sum_res = res.slot_based_value[-1][0]
+    for slot_idx in range(1, batch_size):
+        shift_sum_res = shift_sum_res * (1<<myBatchPlan.encoder.slot_mem_size) + res.slot_based_value[batch_size - 1 - slot_idx][0]
+    res = BatchEncryptedNumber([shift_sum_res], batch_scaling, batch_size)
     '''Decrypt'''
     print("\n-------------------Decryption:-------------------")
     slot_based_v_sum = myBatchPlan.decrypt(res, encrypter.privacy_key)
-    # print(slot_based_v_sum)
-    v_sum = 0
-    for slot_v_list in slot_based_v_sum: v_sum += slot_v_list[0]
-    print(v_sum)
+    print(slot_based_v_sum)
+    # v_sum = 0
+    # for slot_v_list in slot_based_v_sum: v_sum += slot_v_list[0]
+    print(slot_based_v_sum[0])
     print(matrixA.sum())
 
 shift_sum()

@@ -224,7 +224,10 @@ class BatchPlan(object):
                     root.max_slot_size = self.encode_sign_bits + self.element_mem_size
                     self.encode_slot_mem = root.max_slot_size + self.add_times + self.sum_times * math.ceil(math.log2(self.vector_size))     # the final memory for each slot
                     self.encode_slot_mem += 8 - self.encode_slot_mem % 8
-                    max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
+                    if self.sum_times:
+                        max_element_num = int(self.vector_mem_size / 2 / self.encode_slot_mem)
+                    else:
+                        max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
                     if self.vector_size > max_element_num:
                         split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
                         # root.splitTree(max_element_num, split_num)
