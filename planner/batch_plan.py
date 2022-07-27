@@ -348,9 +348,8 @@ class BatchPlan(object):
                     N_JOBS = multiprocessing.cpu_count()
                 row_length = math.ceil(split_num / N_JOBS)      # each process handles row_length vectors
                 pool = multiprocessing.Pool(processes=N_JOBS)
-                sub_process = [pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[idx*row_length:(idx+1)*row_length], self.encoder, pub_key,)) 
-                                                                                                            for idx in range(N_JOBS-1)]
-                sub_process.append(pool.apply_async(self.encrypter.cpuBatchEncrypt, (row_vec[(N_JOBS-1)*row_length:], self.encoder, pub_key,)))
+                row_vec_in_partition = [row_vec[i:i+row_length] for i in range(0, split_num, row_length)]
+                sub_process = [pool.apply_async(self.encrypter.cpuBatchEncrypt, (row, self.encoder, pub_key,)) for row in row_vec_in_partition]
                 pool.close()
                 pool.join()
                 res = []

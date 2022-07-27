@@ -13,8 +13,6 @@ class BatchEncryptedNumber(object):
         self.size = size
         '''Use for lazy operation'''
         self.lazy_flag = lazy_flag              # represents if it is in a lazy mode or not
-        self.batch_idx_map = None
-        self.valid_idx = None
         self.slot_based_value = []          # used in lazy mode. each element is a list, represents a list of PaillierEncryptedNumber. Exp: [1 4 7], [2 5 8], [3 6 9]
         # assign value
         if lazy_flag:
@@ -131,7 +129,6 @@ class BatchEncryptedNumber(object):
         else:
             raise NotImplementedError("Currently only support common mode, instead of lazy operation mode!")
 
-
     def get_batch_num_with_idx(self, idx):
         batch_idx = int(idx / self.size)
         return [idx - batch_idx * self.size, self.value[batch_idx]]
@@ -159,6 +156,7 @@ class BatchEncryptedNumber(object):
             return BatchEncryptedNumber(self.value[start_idx : end_idx], self.scaling, self.size)
         else:
             return BatchEncryptedNumber(self.value[start_idx : ], self.scaling, self.size)
+
     def merge(self, other):
         if not isinstance(other, BatchEncryptedNumber):
             raise TypeError("The input of merge function should be BatchENcryptedNumber!")
@@ -167,6 +165,28 @@ class BatchEncryptedNumber(object):
         else:
             for split_idx in range(len(self.slot_based_value)):
                 self.slot_based_value[split_idx].extend(other.slot_based_value[split_idx])
+    
+    def split_to_partition(self, partition_num):
+        num_in_each_partition = int(np.ceil(len(self.value) / partition_num))
+        res = []
+        value_in_partition = [self.value[i : i+num_in_each_partition] for i in range(0, len(self.value), num_in_each_partition)]
+        for v in value_in_partition:
+            res.append(BatchEncryptedNumber(v, self.scaling, self.size))
+        return res
+    
+    @staticmethod
+    def align_instance(data_list, ben_list):
+        ben_size = ben_list[0].size
+        res = []
+        for idx in range(len(ben_list)):
+            start_idx = idx * ben_size
+            end_idx = (idx + 1) * ben_size
+            if end_idx < len(data_list):
+                res.append([data_list[start_idx:end_idx]])
+            else:
+                res.append([data_list[start_idx:]])
+        return res
+
 
 class BatchEncryption(object):
     def __init__(self, pub_key=None, private_key=None):

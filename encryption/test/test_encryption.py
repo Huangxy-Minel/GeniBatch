@@ -11,9 +11,9 @@ from federatedml.util.fixpoint_solver import FixedPointEncoder
 
 def encrypt_decrypt():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True)
-    matrixA = np.random.uniform(-1, 1, (1, 100))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (100, 1))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=3)
+    matrixA = np.random.uniform(-1, 1, (1, 100000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (100000, 1))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
@@ -38,7 +38,7 @@ def encrypt_decrypt():
     '''Decrypt'''
     decrypted_vec = myBatchPlan.decrypt(encrypted_row_vec, encrypter.privacy_key)
     print("-------------------After decryption:-------------------")
-    print(decrypted_vec)
+    print(decrypted_vec[0:3])
 
 def encrypt_decrypt_with_gpu_encode():
     data_store = DataStorage()
@@ -331,4 +331,4 @@ def shift_sum():
     print(slot_based_v_sum[0])
     print(matrixA.sum())
 
-shift_sum()
+encrypt_decrypt()
