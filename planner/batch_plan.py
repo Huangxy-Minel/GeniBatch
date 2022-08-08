@@ -58,6 +58,7 @@ class BatchPlan(object):
         self.mul_times = 0
         self.add_times = 0
         self.sum_times = 0
+        self.if_shift = True
         '''Use for data storage'''
         self.data_storage = data_storage            # database of the batch plan
         '''Use for interaction with other parties'''
@@ -176,7 +177,7 @@ class BatchPlan(object):
         self.merge_nodes = merge_nodes_list
         self.mul_times += 1
 
-    def shiftSum(self, sum_idx_list:list):
+    def shiftSum(self, sum_idx_list:list, if_shift:bool):
         '''
             Sum self with index
             sum_idx_list: 2-D array, each element such as [[1, 3, 5]] means self.batch_data[1] + self.batch_data[3] + self.batch_data[5]
@@ -191,6 +192,7 @@ class BatchPlan(object):
             new_opera_node.max_slot_size = self.element_mem_size + math.ceil(math.log2(self.vector_size))
             self.root_nodes[row_id] = new_opera_node
         self.sum_times += 1
+        self.if_shift = if_shift
         
 
     def weave(self, encode_para=None):
@@ -224,7 +226,7 @@ class BatchPlan(object):
                     root.max_slot_size = self.encode_sign_bits + self.element_mem_size
                     self.encode_slot_mem = root.max_slot_size + self.add_times + self.sum_times * math.ceil(math.log2(self.vector_size))     # the final memory for each slot
                     self.encode_slot_mem += 8 - self.encode_slot_mem % 8
-                    if self.sum_times:
+                    if self.sum_times and self.if_shift:
                         max_element_num = int(self.vector_mem_size / 2 / self.encode_slot_mem)
                     else:
                         max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector

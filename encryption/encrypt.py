@@ -176,7 +176,7 @@ class BatchEncryptedNumber(object):
     
     @staticmethod
     def align_instance(data_list, ben_list):
-        ben_size = ben_list[0].size
+        ben_size = ben_list[0].size * len(ben_list[0].value)
         res = []
         for idx in range(len(ben_list)):
             start_idx = idx * ben_size
