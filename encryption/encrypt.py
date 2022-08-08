@@ -182,9 +182,9 @@ class BatchEncryptedNumber(object):
             start_idx = idx * ben_size
             end_idx = (idx + 1) * ben_size
             if end_idx < len(data_list):
-                res.append([data_list[start_idx:end_idx]])
+                res.append(data_list[start_idx:end_idx])
             else:
-                res.append([data_list[start_idx:]])
+                res.append(data_list[start_idx:])
         return res
 
 
