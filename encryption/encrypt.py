@@ -176,15 +176,15 @@ class BatchEncryptedNumber(object):
     
     @staticmethod
     def align_instance(data_list, ben_list):
-        ben_size = ben_list[0].size
+        ben_size = ben_list[0].size * len(ben_list[0].value)
         res = []
         for idx in range(len(ben_list)):
             start_idx = idx * ben_size
             end_idx = (idx + 1) * ben_size
             if end_idx < len(data_list):
-                res.append([data_list[start_idx:end_idx]])
+                res.append(data_list[start_idx:end_idx])
             else:
-                res.append([data_list[start_idx:]])
+                res.append(data_list[start_idx:])
         return res
 
 
