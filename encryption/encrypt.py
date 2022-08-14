@@ -187,6 +187,11 @@ class BatchEncryptedNumber(object):
                 res.append(data_list[start_idx:])
         return res
 
+    def get_value_length(self):
+        if self.lazy_flag:
+            return len(self.slot_based_value)
+        else:
+            return len(self.value)
 
 class BatchEncryption(object):
     def __init__(self, pub_key=None, private_key=None):

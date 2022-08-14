@@ -418,11 +418,40 @@ class BatchPlan(object):
         outputs = []
         for one_level_opera_nodes in self.opera_nodes_list:
             time1 = time.time()
-            for node in one_level_opera_nodes:
-                '''single process'''
-                node.parallelExec(self.encoder, self.device_type, self.multi_process_flag, self.max_processes)
-                if node.if_remote:
-                    transfer.remote(obj=(0, 0, node.batch_data), role=role, idx=-1, suffix=current_suffix)
+            if self.multi_process_flag and one_level_opera_nodes[0].operator == "batchMUL":
+                '''multiple processes'''
+                col_num = len(one_level_opera_nodes)
+                batch_encrypted_vec = copy.deepcopy(one_level_opera_nodes[0].children[0].getBatchData())       # BatchEncryptedNumber
+                if self.max_processes: N_JOBS = self.max_processes
+                else: N_JOBS = multiprocessing.cpu_count()
+                tasks_num_per_proc = math.ceil(len(batch_encrypted_vec.value) / N_JOBS)
+                '''partition inputs'''
+                scaling = batch_encrypted_vec.scaling
+                size = batch_encrypted_vec.size
+                self_batch_data_in_partition = [BatchEncryptedNumber(batch_encrypted_vec.value[i:i+tasks_num_per_proc], scaling, size) 
+                                                                            for i in range(0, batch_encrypted_vec.get_value_length(), tasks_num_per_proc)]
+                other_batch_data = np.array([node.children[1].getBatchData() for node in one_level_opera_nodes])
+                other_batch_data_in_partition = np.split(other_batch_data, len(self_batch_data_in_partition), axis=1)
+                '''start process'''
+                pool = multiprocessing.Pool(processes=len(self_batch_data_in_partition))
+                sub_process = [pool.apply_async(self.para_exec_batch_mul, (b1, b2, self.encoder,)) 
+                                                for b1, b2 in zip(self_batch_data_in_partition, other_batch_data_in_partition)]
+                pool.close()
+                pool.join()
+                res = [p.get() for p in sub_process]
+                '''Merge result'''
+                for idx in range(len(one_level_opera_nodes)):
+                    one_level_opera_nodes[idx].batch_data = res[0][idx]
+                    one_level_opera_nodes[idx].state = 1
+                    for i in range(1, len(res)):
+                        one_level_opera_nodes[idx].batch_data.merge(res[i][idx])
+                
+            else:
+                for node in one_level_opera_nodes:
+                    '''single process'''
+                    node.parallelExec(self.encoder, self.device_type, self.multi_process_flag, self.max_processes)
+                    if node.if_remote:
+                        transfer.remote(obj=(0, 0, node.batch_data), role=role, idx=-1, suffix=current_suffix)
             time2 = time.time()
             if one_level_opera_nodes[0].operator == "batchADD":
                 LOGGER.info(f"batchADD operator costs: {time2 - time1}")
@@ -434,6 +463,10 @@ class BatchPlan(object):
             outputs.append(root.getBatchData())
         return outputs
 
+    @staticmethod
+    def para_exec_batch_mul(self_batch_data:BatchEncryptedNumber, other_split_matrix, encoder):
+        res = [PlanNode.cpuBatchMUL(self_batch_data, other_batch_data, encoder) for other_batch_data in other_split_matrix]
+        return res
 
     def printBatchPlan(self):
         '''Use to debug'''

@@ -5,6 +5,9 @@ from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEnc
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import PEN_store, FPN_store
 
+from federatedml.util import LOGGER
+import time
+
 class PlanNode(object):
     '''
     Description:
@@ -289,19 +292,34 @@ class PlanNode(object):
                     else: N_JOBS = multiprocessing.cpu_count()
                     tasks_num_per_proc = math.ceil(len(self_batch_data.value) / N_JOBS)
                     for other_row_vec in [self.children[i].getBatchData() for i in range(1, self.size)]:
-                        pool = multiprocessing.Pool(processes=N_JOBS)
-                        sub_process = [pool.apply_async(self.cpuBatchADD, (self_batch_data.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 
-                                                                        other_row_vec[idx*tasks_num_per_proc : (idx+1)*tasks_num_per_proc], encoder,)) 
-                                                                                                                    for idx in range(N_JOBS-1)]
-                        sub_process.append(pool.apply_async(self.cpuBatchADD, (self_batch_data.split((N_JOBS-1)*tasks_num_per_proc), 
-                                                                            other_row_vec[(N_JOBS-1)*tasks_num_per_proc:], encoder,)))
+                        # time1 = time.time()
+                        scaling = self_batch_data.scaling
+                        size = self_batch_data.size
+                        self_batch_data_in_partition = [BatchEncryptedNumber(self_batch_data.value[i:i+tasks_num_per_proc], scaling, size) 
+                                                                            for i in range(0, self_batch_data.get_value_length(), tasks_num_per_proc)]
+                        other_batch_data_in_partition = [other_row_vec[i:i+tasks_num_per_proc] for i in range(0, len(other_row_vec), tasks_num_per_proc)]
+
+                        pool = multiprocessing.Pool(processes=len(self_batch_data_in_partition))
+                        sub_process = [pool.apply_async(self.cpuBatchADD, (b1, b2, encoder,)) for b1, b2 in zip(self_batch_data_in_partition, other_batch_data_in_partition)]
+                        
+                        # sub_process = [pool.apply_async(self.cpuBatchADD, (self_batch_data.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 
+                        #                                                 other_row_vec[idx*tasks_num_per_proc : (idx+1)*tasks_num_per_proc], encoder,)) 
+                        #                                                                                             for idx in range(N_JOBS-1)]
+                        # sub_process.append(pool.apply_async(self.cpuBatchADD, (self_batch_data.split((N_JOBS-1)*tasks_num_per_proc), 
+                        #                                                     other_row_vec[(N_JOBS-1)*tasks_num_per_proc:], encoder,)))
+                        # time2 = time.time()
+                        # LOGGER.info(f"Start multi-process in batchADD costs: {time2 - time1}")
                         pool.close()
                         pool.join()
                         res = [p.get() for p in sub_process]
+                        # time1 = time.time()
+                        # LOGGER.info(f"Get results in batchADD costs: {time1 - time2}")
                         # merge res
                         self_batch_data = res[0]
                         for i in range(1, len(res)):
                             self_batch_data.merge(res[i])
+                        # time2 = time.time()
+                        # LOGGER.info(f"Merge results in batchADD costs: {time2 - time1}")
                 else:
                     for other_row_vec in [self.children[i].getBatchData() for i in range(1, self.size)]:
                         self_batch_data = self.cpuBatchADD(self_batch_data, other_row_vec, encoder)
@@ -321,20 +339,36 @@ class PlanNode(object):
                 if multi_process_flag:
                     if max_processes: N_JOBS = max_processes
                     else: N_JOBS = multiprocessing.cpu_count()
+                    time1 = time.time()
                     tasks_num_per_proc = math.ceil(len(batch_encrypted_vec.value) / N_JOBS)
-                    pool = multiprocessing.Pool(processes=N_JOBS)
-                    sub_process = [pool.apply_async(self.cpuBatchMUL, (batch_encrypted_vec.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 
-                                                                    other_batch_data[idx*tasks_num_per_proc : (idx+1)*tasks_num_per_proc], encoder,)) 
-                                                                                                                for idx in range(N_JOBS-1)]
-                    sub_process.append(pool.apply_async(self.cpuBatchMUL, (batch_encrypted_vec.split((N_JOBS-1)*tasks_num_per_proc), 
-                                                                        other_batch_data[(N_JOBS-1)*tasks_num_per_proc:], encoder,)))
+                    
+                    scaling = batch_encrypted_vec.scaling
+                    size = batch_encrypted_vec.size
+                    self_batch_data_in_partition = [BatchEncryptedNumber(batch_encrypted_vec.value[i:i+tasks_num_per_proc], scaling, size) 
+                                                                            for i in range(0, batch_encrypted_vec.get_value_length(), tasks_num_per_proc)]
+                    other_batch_data_in_partition = [other_batch_data[i:i+tasks_num_per_proc] for i in range(0, len(other_batch_data), tasks_num_per_proc)]
+
+                    pool = multiprocessing.Pool(processes=len(self_batch_data_in_partition))
+                    sub_process = [pool.apply_async(self.cpuBatchMUL, (b1, b2, encoder,)) for b1, b2 in zip(self_batch_data_in_partition, other_batch_data_in_partition)]
+
+                    # sub_process = [pool.apply_async(self.cpuBatchMUL, (batch_encrypted_vec.split(idx*tasks_num_per_proc, (idx+1)*tasks_num_per_proc), 
+                    #                                                 other_batch_data[idx*tasks_num_per_proc : (idx+1)*tasks_num_per_proc], encoder,)) 
+                    #                                                                                             for idx in range(N_JOBS-1)]
+                    # sub_process.append(pool.apply_async(self.cpuBatchMUL, (batch_encrypted_vec.split((N_JOBS-1)*tasks_num_per_proc), 
+                    #                                                     other_batch_data[(N_JOBS-1)*tasks_num_per_proc:], encoder,)))
+                    time2 = time.time()
+                    LOGGER.info(f"Start multi-process in batchMUL costs: {time2 - time1}")
                     pool.close()
                     pool.join()
                     res = [p.get() for p in sub_process]    # a list of BatchEncryptedNumber, which are in the lazy mode
+                    time1 = time.time()
+                    LOGGER.info(f"Get results in batchMUL costs: {time1 - time2}")
                     # merge res
                     self_batch_data = res[0]
                     for i in range(1, len(res)):
                         self_batch_data.merge(res[i])
+                    time2 = time.time()
+                    LOGGER.info(f"Merge results in batchMUL costs: {time2 - time1}")
                     self.batch_data = self_batch_data
                 else:
                     self.batch_data = self.cpuBatchMUL(batch_encrypted_vec, other_batch_data, encoder)
@@ -346,7 +380,10 @@ class PlanNode(object):
         elif self.operator == "batchSUM":
             batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
             if device_type == 'CPU':
+                time1 = time.time()
                 self.batch_data = self.cpuBatchSUM(batch_encrypted_vec)
+                time2 = time.time()
+                LOGGER.info(f"batchSUM costs: {time2 - time1}")
             elif device_type == 'GPU':
                 self.batch_data = self.gpuBatchSUM(batch_encrypted_vec)
             else:

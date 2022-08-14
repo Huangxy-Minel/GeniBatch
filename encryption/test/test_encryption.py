@@ -73,9 +73,9 @@ def encrypt_decrypt_with_gpu_encode():
 
 def encrypted_add():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32, device_type='GPU', multi_process_flag=True, max_processes=40)
-    matrixA = np.random.uniform(-1, 1, (1, 100))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 100))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=40)
+    matrixA = np.random.uniform(-1, 1, (1, 10000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 10000))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
@@ -120,10 +120,10 @@ def encrypted_add():
 
 def encrypted_mul():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=False, max_processes=None)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=40)
     matrixA = np.random.uniform(-1, 1, (1, 3000))     # ciphertext
     matrixB = np.random.uniform(-1, 1, (1, 3000))
-    matrixC = np.random.uniform(-1, 1, (3000, 1))     # plaintext
+    matrixC = np.random.uniform(-1, 1, (3000, 10))     # plaintext
     matrixA = matrixA.astype(np.float32)
     matrixB = matrixB.astype(np.float32)
     matrixC = matrixC.astype(np.float32)
@@ -331,4 +331,4 @@ def shift_sum():
     print(slot_based_v_sum[0])
     print(matrixA.sum())
 
-encrypt_decrypt()
+encrypted_mul()

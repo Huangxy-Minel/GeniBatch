@@ -212,9 +212,9 @@ def test_encryption():
 
 
 def test_matrix_operation():
-    row_vec_A = np.random.uniform(-1, 1, 1000)
+    row_vec_A = np.random.uniform(-1, 1, 1000000)
     elements_num = row_vec_A.size
-    row_vec_B = np.random.uniform(-1, 1, 1000)
+    row_vec_B = np.random.uniform(-1, 1, 1000000)
     row_vec_A = row_vec_A.astype(np.float32)
     row_vec_B = row_vec_B.astype(np.float32)
     key_generator = PaillierEncrypt()
@@ -247,12 +247,12 @@ def test_matrix_operation():
     pen_store_A = pen_store_A.obfuscation()
     pen_store_B = fpn_store_B.encrypt(key_generator.public_key)
     pen_store_B = pen_store_B.obfuscation()
-    '''GPU with BatchEncode'''
-    encrypter = BatchEncryption()
-    fpn_with_batch_store_A = FPN_store.batch_encode(row_vec_used_in_gpu_A, encoder.scaling, encoder.size, encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits, key_generator.public_key)
-    fpn_with_batch_store_B = FPN_store.batch_encode(row_vec_used_in_gpu_B, encoder.scaling, encoder.size, encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits, key_generator.public_key)
-    pen_with_batch_store_A = encrypter.gpuBatchEncrypt(fpn_with_batch_store_A, encoder.scaling, encoder.size, key_generator.public_key)
-    pen_with_batch_store_B = encrypter.gpuBatchEncrypt(fpn_with_batch_store_B, encoder.scaling, encoder.size, key_generator.public_key)
+    # '''GPU with BatchEncode'''
+    # encrypter = BatchEncryption()
+    # fpn_with_batch_store_A = FPN_store.batch_encode(row_vec_used_in_gpu_A, encoder.scaling, encoder.size, encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits, key_generator.public_key)
+    # fpn_with_batch_store_B = FPN_store.batch_encode(row_vec_used_in_gpu_B, encoder.scaling, encoder.size, encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits, key_generator.public_key)
+    # pen_with_batch_store_A = encrypter.gpuBatchEncrypt(fpn_with_batch_store_A, encoder.scaling, encoder.size, key_generator.public_key)
+    # pen_with_batch_store_B = encrypter.gpuBatchEncrypt(fpn_with_batch_store_B, encoder.scaling, encoder.size, key_generator.public_key)
 
 
     print("\n--------------------------------------ADD Test Report:--------------------------------------")
@@ -274,12 +274,12 @@ def test_matrix_operation():
     stop_time = time.time()
     print("Throughput: ", int(elements_num / (stop_time - start_time)))
     print("Duration: ", stop_time - start_time)
-    print("\n-------------------GPU with BatchEncode:-------------------")
-    start_time = time.time()
-    res = pen_with_batch_store_A.value + pen_with_batch_store_B.value
-    stop_time = time.time()
-    print("Throughput: ", int(elements_num / (stop_time - start_time)))
-    print("Duration: ", stop_time - start_time)
+    # print("\n-------------------GPU with BatchEncode:-------------------")
+    # start_time = time.time()
+    # res = pen_with_batch_store_A.value + pen_with_batch_store_B.value
+    # stop_time = time.time()
+    # print("Throughput: ", int(elements_num / (stop_time - start_time)))
+    # print("Duration: ", stop_time - start_time)
 
 
     print("\n--------------------------------------MUL Test Report:--------------------------------------")
@@ -309,37 +309,45 @@ def test_matrix_operation():
     stop_time = time.time()
     print("Duration: ", stop_time - start_time)
     print("Throughput: ", int(elements_num / (stop_time - start_time)))
-    print("\n-------------------GPU with BatchEncode:-------------------")
-    coefficients_list = []
-    for split_idx in range(max_element_num):
-        coefficients = [v[split_idx] for v in row_vec_used_in_cpu_B]
-        coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, key_generator.public_key)       # encode
-        coefficients_list.append(coefficients)
-    start_time = time.time()
-    t1 = time.time()
-    batch_num_list_in_gpu = [pen_with_batch_store_A.value.deep_copy() for _ in range(max_element_num)]     # copy
-    t2 = time.time()
-    print(t2 - t1)
-    # cat
-    # input_pen_store = batch_num_list_in_gpu[0]
-    # input_fpn_store = coefficients_list[0]
-    # for split_idx in range(1, max_element_num):
-    #     input_pen_store = input_pen_store.cat(batch_num_list_in_gpu[split_idx], axis=1)
-    #     input_fpn_store = input_fpn_store.cat(coefficients_list[split_idx], axis=1)
+    # print("\n-------------------GPU with BatchEncode:-------------------")
+    # coefficients_list = []
+    # for split_idx in range(max_element_num):
+    #     coefficients = [v[split_idx] for v in row_vec_used_in_cpu_B]
+    #     coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, key_generator.public_key)       # encode
+    #     coefficients_list.append(coefficients)
+    # start_time = time.time()
     # t1 = time.time()
-    # print(t1 - t2)
-    # input_pen_store = input_pen_store * input_fpn_store
+    # batch_num_list_in_gpu = [pen_with_batch_store_A.value.deep_copy() for _ in range(max_element_num)]     # copy
     # t2 = time.time()
     # print(t2 - t1)
+    # # cat
+    # # input_pen_store = batch_num_list_in_gpu[0]
+    # # input_fpn_store = coefficients_list[0]
+    # # for split_idx in range(1, max_element_num):
+    # #     input_pen_store = input_pen_store.cat(batch_num_list_in_gpu[split_idx], axis=1)
+    # #     input_fpn_store = input_fpn_store.cat(coefficients_list[split_idx], axis=1)
+    # # t1 = time.time()
+    # # print(t1 - t2)
+    # # input_pen_store = input_pen_store * input_fpn_store
+    # # t2 = time.time()
+    # # print(t2 - t1)
 
-    # compute without cat
-    res = [batch_num_list_in_gpu[split_idx] * coefficients_list[split_idx] for split_idx in range(max_element_num)]
-    # gpu_with_batch_res = [a * b for a, b in zip(batch_num_list_in_gpu, coefficients_list)]    # linear execute multiplication
-    stop_time = time.time()
-    print("Duration: ", stop_time - start_time)
-    print("Throughput: ", int(elements_num / (stop_time - start_time)))
+    # # compute without cat
+    # res = [batch_num_list_in_gpu[split_idx] * coefficients_list[split_idx] for split_idx in range(max_element_num)]
+    # # gpu_with_batch_res = [a * b for a, b in zip(batch_num_list_in_gpu, coefficients_list)]    # linear execute multiplication
+    # stop_time = time.time()
+    # print("Duration: ", stop_time - start_time)
+    # print("Throughput: ", int(elements_num / (stop_time - start_time)))
 
-def test_mul(pen, coefficient):
-    return pen * coefficient
+def test_mul():
+    row_vec_A = np.random.uniform(-1, 1, 1000000)
+    matrix_B = np.random.uniform(-1, 1, (1000000, 50))
+    key_generator = PaillierEncrypt()
+    key_generator.generate_key()
+    fpn_store_A = FPN_store.init_from_arr(row_vec_A, key_generator.public_key.n, key_generator.public_key.max_int)
+    pen_store_A = fpn_store_A.encrypt(key_generator.public_key)
+    pen_store_A = pen_store_A.obfuscation()
+    res = pen_store_A.r_dot(np.ascontiguousarray(matrix_B.transpose()))
+    print(1)
 
-test_matrix_operation()
+test_mul()
