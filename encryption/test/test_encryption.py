@@ -121,9 +121,9 @@ def encrypted_add():
 def encrypted_mul():
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=40)
-    matrixA = np.random.uniform(-1, 1, (1, 3000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 3000))
-    matrixC = np.random.uniform(-1, 1, (3000, 10))     # plaintext
+    matrixA = np.random.uniform(-1, 1, (1, 569))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 569))
+    matrixC = np.random.uniform(-1, 1, (569, 10))     # plaintext
     matrixA = matrixA.astype(np.float32)
     matrixB = matrixB.astype(np.float32)
     matrixC = matrixC.astype(np.float32)
@@ -159,7 +159,6 @@ def encrypted_mul():
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")
     outputs = myBatchPlan.parallelExec()
-    print(fore_gradient_node.getBatchData().slot_based_value)
     '''Decrypt & shift sum'''
     res = []
     for output in outputs:

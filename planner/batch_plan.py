@@ -420,7 +420,7 @@ class BatchPlan(object):
             time1 = time.time()
             if self.multi_process_flag and one_level_opera_nodes[0].operator == "batchMUL":
                 '''multiple processes'''
-                col_num = len(one_level_opera_nodes)
+                time3 = time.time()
                 batch_encrypted_vec = copy.deepcopy(one_level_opera_nodes[0].children[0].getBatchData())       # BatchEncryptedNumber
                 if self.max_processes: N_JOBS = self.max_processes
                 else: N_JOBS = multiprocessing.cpu_count()
@@ -431,20 +431,28 @@ class BatchPlan(object):
                 self_batch_data_in_partition = [BatchEncryptedNumber(batch_encrypted_vec.value[i:i+tasks_num_per_proc], scaling, size) 
                                                                             for i in range(0, batch_encrypted_vec.get_value_length(), tasks_num_per_proc)]
                 other_batch_data = np.array([node.children[1].getBatchData() for node in one_level_opera_nodes])
-                other_batch_data_in_partition = np.split(other_batch_data, len(self_batch_data_in_partition), axis=1)
+                other_batch_data_in_partition = [other_batch_data[:, i:i+tasks_num_per_proc, :] for i in range(0, batch_encrypted_vec.get_value_length(), tasks_num_per_proc)]
+                time4 = time.time()
+                LOGGER.info(f"Prepare data partition costs: {time4 - time3}")
                 '''start process'''
                 pool = multiprocessing.Pool(processes=len(self_batch_data_in_partition))
                 sub_process = [pool.apply_async(self.para_exec_batch_mul, (b1, b2, self.encoder,)) 
                                                 for b1, b2 in zip(self_batch_data_in_partition, other_batch_data_in_partition)]
+                time3 = time.time()
+                LOGGER.info(f"Start process in batchMUL costs: {time3 - time4}")
                 pool.close()
                 pool.join()
                 res = [p.get() for p in sub_process]
+                time4 = time.time()
+                LOGGER.info(f"get process result in batchMUL costs: {time4 - time3}")
                 '''Merge result'''
                 for idx in range(len(one_level_opera_nodes)):
                     one_level_opera_nodes[idx].batch_data = res[0][idx]
                     one_level_opera_nodes[idx].state = 1
                     for i in range(1, len(res)):
                         one_level_opera_nodes[idx].batch_data.merge(res[i][idx])
+                time3 = time.time()
+                LOGGER.info(f"merge results in batchMUL costs: {time3 - time4}")
                 
             else:
                 for node in one_level_opera_nodes:
