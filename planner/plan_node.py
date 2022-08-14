@@ -59,7 +59,7 @@ class PlanNode(object):
         '''
         Create a node from a operator (batchADD, batchMUL or Merge)
         '''
-        if operator == "batchADD" or operator == "batchMUL" or operator == "Merge" or operator == "batchSUM" or operator == "shiftSUM":
+        if operator == "batchADD" or operator == "batchMUL" or operator == "Merge" or operator == "batchSUM" or operator == "shiftSUM" or operator == "batchMUL_SUM":
             new_node = PlanNode(operator=operator, if_remote=if_remote)
         else: 
             raise TypeError("Please check the operation type, just supports batchADD, batchMUL and Merge!")
@@ -86,6 +86,18 @@ class PlanNode(object):
         new_mul_operator.addChild(other_vec_node)
         new_mul_operator.max_slot_size = self.max_slot_size + other_vec_node.max_slot_size   # Adds in MUL matrix operation are ignored
         new_mul_operator.shape = self.shape
+        return new_mul_operator
+    
+    def batchMulSum(self, other_vec_node, if_remote:bool=False):
+        '''Build batch-wise mul operator'''
+        if other_vec_node.operator != None:
+            raise TypeError("Inputs should be vector nodes!")
+        new_mul_operator = PlanNode.fromOperator("batchMUL_SUM", if_remote=if_remote)     # each batchMUl operator just output 1 element
+        new_mul_operator.addChild(self)   
+        new_mul_operator.addChild(other_vec_node)
+        new_mul_operator.max_slot_size = self.max_slot_size + other_vec_node.max_slot_size   # Adds in MUL matrix operation are ignored
+        new_mul_operator.max_slot_size = new_mul_operator.max_slot_size + math.ceil(math.log2(self.shape[1]))
+        new_mul_operator.shape = (1, 1)
         return new_mul_operator
     
     def batchSum(self, if_remote:bool=False):
@@ -388,7 +400,11 @@ class PlanNode(object):
                 self.batch_data = self.gpuBatchSUM(batch_encrypted_vec)
             else:
                 raise NotImplementedError("Only support CPU & GPU device!")
-
+        
+        elif self.operator == "batchMUL_SUM":
+            batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
+            if device_type == 'CPU':
+                self.batch_data = self.cpuBatchMUL_SUM(batch_encrypted_vec, other_batch_data, encoder)
         elif self.operator == "Merge":
             self.batch_data = []
             for i in range(self.size):
@@ -494,3 +510,27 @@ class PlanNode(object):
     def gpuBatchSUM(self, self_batch_data:BatchEncryptedNumber):
         sum_value = [self_batch_data.slot_based_value[split_idx].sum() for split_idx in range(self_batch_data.size)]
         return BatchEncryptedNumber(sum_value, self_batch_data.scaling, self_batch_data.size, lazy_flag=True)
+
+    @staticmethod
+    def cpuBatchMUL_SUM(self_encrypted_vec:BatchEncryptedNumber, other_batch_data, encoder:BatchEncoder):
+        '''
+            Execute MUL operator, mul batch data of all children
+            Batch data of each children: a list of PaillierEncryptedNumber, store in BatchEncryptedNumber.value
+            Logic: copy encrypted batch data, mul with corresponded cofficients, then sum
+        '''
+        # print("Enter")
+        # time1 = time.time()
+        scaling = self_encrypted_vec.scaling
+        # update scaling
+        scaling *= encoder.scaling
+        # mul with coefficients
+        coefficients_list = []
+        for split_idx in range(encoder.size):
+            coefficients = [v[split_idx] for v in other_batch_data]
+            coefficients = encoder.scalarEncode(coefficients)       # encode
+            coefficients_list.append(coefficients)
+        res = self_encrypted_vec.batch_mul_sum(coefficients_list)
+        res.scaling = scaling
+        # time2 = time.time()
+        # print("Process duration: ", time2 - time1)
+        return res

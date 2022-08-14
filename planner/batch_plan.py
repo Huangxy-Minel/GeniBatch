@@ -9,6 +9,8 @@ from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store,
 
 from federatedml.util import LOGGER
 
+from joblib import Parallel, delayed
+
 import multiprocessing
 
 
@@ -161,11 +163,10 @@ class BatchPlan(object):
         for row_id in range(self.matrix_shape[0]):
             new_merge_node = PlanNode.fromOperator("Merge", if_remote=if_remote)
             for col_id in range(BatchPlanB.matrix_shape[0]):           # for each row vector of self, it should be times for col_num of matrixB
-                new_mul_operator = self.root_nodes[row_id].batchMul(BatchPlanB.root_nodes[col_id])
-                new_batch_sum_operator = new_mul_operator.batchSum()
-                new_merge_node.addChild(new_batch_sum_operator)           # using merge operator splice elements from MUL operators
-                if new_merge_node.max_slot_size < new_batch_sum_operator.max_slot_size:
-                    new_merge_node.max_slot_size = new_batch_sum_operator.max_slot_size
+                new_mul_operator = self.root_nodes[row_id].batchMulSum(BatchPlanB.root_nodes[col_id])
+                new_merge_node.addChild(new_mul_operator)           # using merge operator splice elements from MUL operators
+                if new_merge_node.max_slot_size < new_mul_operator.max_slot_size:
+                    new_merge_node.max_slot_size = new_mul_operator.max_slot_size
             new_merge_node.shape = (1, BatchPlanB.matrix_shape[0])
             merge_nodes_list.append(new_merge_node)
             self.root_nodes[row_id] = new_merge_node
@@ -418,7 +419,25 @@ class BatchPlan(object):
         outputs = []
         for one_level_opera_nodes in self.opera_nodes_list:
             time1 = time.time()
-            if self.multi_process_flag and one_level_opera_nodes[0].operator == "batchMUL":
+            # if self.multi_process_flag and one_level_opera_nodes[0].operator == "batchMUL_SUM":
+            #     '''multiple processes'''
+            #     N_JOBS = self.max_processes
+            #     time3 = time.time()
+            #     batch_encrypted_vec = copy.deepcopy(one_level_opera_nodes[0].children[0].getBatchData())       # BatchEncryptedNumber
+            #     other_batch_data_list = [node.children[1].getBatchData() for node in one_level_opera_nodes]
+            #     pool = multiprocessing.Pool(processes=N_JOBS)
+            #     sub_process = [pool.apply_async(PlanNode.cpuBatchMUL_SUM, (batch_encrypted_vec, other_batch_data_list[idx], self.encoder, )) 
+            #                                             for idx in range(len(other_batch_data_list))]
+            #     pool.close()
+            #     time4 = time.time()
+            #     LOGGER.info(f"Start process in batchMUL_SUM costs: {time4 - time3}")
+            #     pool.join()
+            #     time3 = time.time()
+            #     LOGGER.info(f"Get res costs: {time3 - time4}")
+            #     for node, p in zip(one_level_opera_nodes, sub_process):
+            #         node.batch_data = p.get()
+            #         node.state = 1
+            if self.multi_process_flag and one_level_opera_nodes[0].operator == "batchMUL_SUM":
                 '''multiple processes'''
                 time3 = time.time()
                 batch_encrypted_vec = copy.deepcopy(one_level_opera_nodes[0].children[0].getBatchData())       # BatchEncryptedNumber
@@ -453,7 +472,16 @@ class BatchPlan(object):
                         one_level_opera_nodes[idx].batch_data.merge(res[i][idx])
                 time3 = time.time()
                 LOGGER.info(f"merge results in batchMUL costs: {time3 - time4}")
-                
+            # elif self.multi_process_flag and one_level_opera_nodes[0].operator == "batchSUM":
+            #     N_JOBS = self.max_processes
+            #     pool = multiprocessing.Pool(processes=N_JOBS)
+            #     sub_process = [pool.apply_async(PlanNode.cpuBatchSUM, (node.children[0].getBatchData(), )) for node in one_level_opera_nodes]
+            #     pool.close()
+            #     pool.join()
+            #     res = [p.get() for p in sub_process]
+            #     for node, batch_data in zip(one_level_opera_nodes, res):
+            #         node.batch_data = batch_data
+            #         node.state = 1
             else:
                 for node in one_level_opera_nodes:
                     '''single process'''
@@ -467,13 +495,15 @@ class BatchPlan(object):
                 LOGGER.info(f"batchMUL operator costs: {time2 - time1}")
             elif one_level_opera_nodes[0].operator == "batchSUM":
                 LOGGER.info(f"batchSUM operator costs: {time2 - time1}")
+            elif one_level_opera_nodes[0].operator == "batchMUL_SUM":
+                LOGGER.info(f"batchMUL_SUM operator costs: {time2 - time1}")
         for root in self.root_nodes:
             outputs.append(root.getBatchData())
         return outputs
 
     @staticmethod
     def para_exec_batch_mul(self_batch_data:BatchEncryptedNumber, other_split_matrix, encoder):
-        res = [PlanNode.cpuBatchMUL(self_batch_data, other_batch_data, encoder) for other_batch_data in other_split_matrix]
+        res = [PlanNode.cpuBatchMUL_SUM(self_batch_data, other_batch_data, encoder) for other_batch_data in other_split_matrix]
         return res
 
     def printBatchPlan(self):

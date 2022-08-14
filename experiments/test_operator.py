@@ -4,7 +4,7 @@ import time, copy
 from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
-from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryption
+from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryptedNumber, BatchEncryption
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store, PEN_store
 from federatedml.secureprotol.fate_paillier import PaillierKeypair, PaillierPublicKey, PaillierPrivateKey, PaillierEncryptedNumber
 
@@ -212,9 +212,9 @@ def test_encryption():
 
 
 def test_matrix_operation():
-    row_vec_A = np.random.uniform(-1, 1, 1000000)
+    row_vec_A = np.random.uniform(-1, 1, 10000)
     elements_num = row_vec_A.size
-    row_vec_B = np.random.uniform(-1, 1, 1000000)
+    row_vec_B = np.random.uniform(-1, 1, 10000)
     row_vec_A = row_vec_A.astype(np.float32)
     row_vec_B = row_vec_B.astype(np.float32)
     key_generator = PaillierEncrypt()
@@ -234,19 +234,21 @@ def test_matrix_operation():
     # CPU_encode_num_list_B = [FixedPointNumber.encode(v) for v in row_vec_B]
     # CPU_pen_list_A = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v.encoding), v.exponent) for v in CPU_encode_num_list_A]
     # CPU_pen_list_B = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v.encoding), v.exponent) for v in CPU_encode_num_list_B]
-    # '''CPU with BatchEncode'''
-    # print("Begin encoding and encrypting using CPU with BatchEncode")
-    # CPU_with_batch_encode_number_list_A = [encoder.batchEncode(slot_number) for slot_number in row_vec_used_in_cpu_A]    # a list of BatchEncodeNumber
-    # CPU_with_batch_encode_number_list_B = [encoder.batchEncode(slot_number) for slot_number in row_vec_used_in_cpu_B]    # a list of BatchEncodeNumber
-    # CPU_with_batch_pen_list_A = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v), 0) for v in CPU_with_batch_encode_number_list_A]
-    # CPU_with_batch_pen_list_B = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v), 0) for v in CPU_with_batch_encode_number_list_B]
-    '''GPU'''
-    fpn_store_A = FPN_store.init_from_arr(row_vec_A, key_generator.public_key.n, key_generator.public_key.max_int)
-    fpn_store_B = FPN_store.init_from_arr(row_vec_B, key_generator.public_key.n, key_generator.public_key.max_int)
-    pen_store_A = fpn_store_A.encrypt(key_generator.public_key)
-    pen_store_A = pen_store_A.obfuscation()
-    pen_store_B = fpn_store_B.encrypt(key_generator.public_key)
-    pen_store_B = pen_store_B.obfuscation()
+    '''CPU with BatchEncode'''
+    print("Begin encoding and encrypting using CPU with BatchEncode")
+    CPU_with_batch_encode_number_list_A = [encoder.batchEncode(slot_number) for slot_number in row_vec_used_in_cpu_A]    # a list of BatchEncodeNumber
+    CPU_with_batch_encode_number_list_B = [encoder.batchEncode(slot_number) for slot_number in row_vec_used_in_cpu_B]    # a list of BatchEncodeNumber
+    CPU_with_batch_pen_list_A = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v), 0) for v in CPU_with_batch_encode_number_list_A]
+    CPU_with_batch_pen_list_A = BatchEncryptedNumber(CPU_with_batch_pen_list_A, encoder.scaling, encoder.size)
+    CPU_with_batch_pen_list_B = [PaillierEncryptedNumber(key_generator.public_key, key_generator.public_key.raw_encrypt(v), 0) for v in CPU_with_batch_encode_number_list_B]
+    CPU_with_batch_pen_list_B = BatchEncryptedNumber(CPU_with_batch_pen_list_B, encoder.scaling, encoder.size)
+    # '''GPU'''
+    # fpn_store_A = FPN_store.init_from_arr(row_vec_A, key_generator.public_key.n, key_generator.public_key.max_int)
+    # fpn_store_B = FPN_store.init_from_arr(row_vec_B, key_generator.public_key.n, key_generator.public_key.max_int)
+    # pen_store_A = fpn_store_A.encrypt(key_generator.public_key)
+    # pen_store_A = pen_store_A.obfuscation()
+    # pen_store_B = fpn_store_B.encrypt(key_generator.public_key)
+    # pen_store_B = pen_store_B.obfuscation()
     # '''GPU with BatchEncode'''
     # encrypter = BatchEncryption()
     # fpn_with_batch_store_A = FPN_store.batch_encode(row_vec_used_in_gpu_A, encoder.scaling, encoder.size, encoder.slot_mem_size, encoder.bit_width, encoder.sign_bits, key_generator.public_key)
@@ -262,18 +264,19 @@ def test_matrix_operation():
     # stop_time = time.time()
     # print("Duration: ", stop_time - start_time)
     # print("Throughput: ", int(elements_num / (stop_time - start_time)))
-    # print("\n-------------------CPU with BatchEncode:-------------------")
-    # start_time = time.time()
-    # res = [a + b for a, b in zip(CPU_with_batch_pen_list_A, CPU_with_batch_pen_list_B)]
-    # stop_time = time.time()
-    # print("Duration: ", stop_time - start_time)
-    # print("Throughput: ", int(elements_num / (stop_time - start_time)))
-    print("\n-------------------GPU:-------------------")
+    print("\n-------------------CPU with BatchEncode:-------------------")
     start_time = time.time()
-    res = pen_store_A + pen_store_B
+    # res = [a + b for a, b in zip(CPU_with_batch_pen_list_A, CPU_with_batch_pen_list_B)]
+    res = CPU_with_batch_pen_list_A.batch_add(CPU_with_batch_pen_list_B)
     stop_time = time.time()
-    print("Throughput: ", int(elements_num / (stop_time - start_time)))
     print("Duration: ", stop_time - start_time)
+    print("Throughput: ", int(elements_num / (stop_time - start_time)))
+    # print("\n-------------------GPU:-------------------")
+    # start_time = time.time()
+    # res = pen_store_A + pen_store_B
+    # stop_time = time.time()
+    # print("Throughput: ", int(elements_num / (stop_time - start_time)))
+    # print("Duration: ", stop_time - start_time)
     # print("\n-------------------GPU with BatchEncode:-------------------")
     # start_time = time.time()
     # res = pen_with_batch_store_A.value + pen_with_batch_store_B.value
@@ -289,26 +292,27 @@ def test_matrix_operation():
     # stop_time = time.time()
     # print("Duration: ", stop_time - start_time)
     # print("Throughput: ", int(elements_num / (stop_time - start_time)))
-    # print("\n-------------------CPU with BatchEncode:-------------------")
-    # coefficients_list = []
-    # for split_idx in range(max_element_num):
-    #     coefficients = [v[split_idx] for v in row_vec_used_in_cpu_B]
-    #     coefficients = encoder.scalarEncode(coefficients)       # encode
-    #     coefficients_list.append(coefficients)
-    # # begin computation
-    # start_time = time.time()
+    print("\n-------------------CPU with BatchEncode:-------------------")
+    coefficients_list = []
+    for split_idx in range(max_element_num):
+        coefficients = [v[split_idx] for v in row_vec_used_in_cpu_B]
+        coefficients = encoder.scalarEncode(coefficients)       # encode
+        coefficients_list.append(coefficients)
+    # begin computation
+    start_time = time.time()
     # batch_num_list_in_cpu = [copy.deepcopy(CPU_with_batch_pen_list_A) for _ in range(max_element_num)]
     # for split_idx in range(max_element_num):
     #     batch_num_list_in_cpu[split_idx] = [a * b for a, b in zip(CPU_with_batch_pen_list_A, coefficients_list[split_idx])]
-    # stop_time = time.time()
-    # print("Duration: ", stop_time - start_time)
-    # print("Throughput: ", int(elements_num / (stop_time - start_time)))
-    print("\n-------------------GPU:-------------------")
-    start_time = time.time()
-    res = pen_store_A * fpn_store_B
+    res = CPU_with_batch_pen_list_A.batch_mul(coefficients_list)
     stop_time = time.time()
     print("Duration: ", stop_time - start_time)
     print("Throughput: ", int(elements_num / (stop_time - start_time)))
+    # print("\n-------------------GPU:-------------------")
+    # start_time = time.time()
+    # res = pen_store_A * fpn_store_B
+    # stop_time = time.time()
+    # print("Duration: ", stop_time - start_time)
+    # print("Throughput: ", int(elements_num / (stop_time - start_time)))
     # print("\n-------------------GPU with BatchEncode:-------------------")
     # coefficients_list = []
     # for split_idx in range(max_element_num):
@@ -350,4 +354,4 @@ def test_mul():
     res = pen_store_A.r_dot(np.ascontiguousarray(matrix_B.transpose()))
     print(1)
 
-test_mul()
+test_matrix_operation()

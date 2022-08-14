@@ -98,6 +98,20 @@ class BatchEncryptedNumber(object):
                 sum_value.append([temp])
             return BatchEncryptedNumber(sum_value, self.scaling, self.size, lazy_flag=True)
 
+    def batch_mul_sum(self, other):
+        if not self.lazy_flag:
+            self.to_slot_based_value()
+        value = []
+        for split_idx in range(self.size):
+            value.append([self.slot_based_value[split_idx][value_idx] * other[split_idx][value_idx] for value_idx in range(len(other[0]))])
+        sum_value = []
+        for slot_value_list in value:
+            temp = 0
+            for v in slot_value_list:
+                temp = v + temp
+            sum_value.append([temp])
+        return BatchEncryptedNumber(sum_value, self.scaling, self.size, lazy_flag=True)
+
     def shift_add(self, other, slot_idx, element_idx):
         '''Current version: other should be a BatchEncodeNumber (a big integer)'''
         # if not self.lazy_flag:
