@@ -437,7 +437,7 @@ class BatchPlan(object):
             #     for node, p in zip(one_level_opera_nodes, sub_process):
             #         node.batch_data = p.get()
             #         node.state = 1
-            if self.multi_process_flag and one_level_opera_nodes[0].operator == "batchMUL_SUM":
+            if self.multi_process_flag and self.device_type == "CPU" and one_level_opera_nodes[0].operator == "batchMUL_SUM":
                 '''multiple processes'''
                 time3 = time.time()
                 batch_encrypted_vec = copy.deepcopy(one_level_opera_nodes[0].children[0].getBatchData())       # BatchEncryptedNumber
