@@ -402,7 +402,10 @@ class PlanNode(object):
                 raise NotImplementedError("Only support CPU & GPU device!")
         
         elif self.operator == "batchMUL_SUM":
-            batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
+            if self.size > 2:
+                raise NotImplementedError("Current version only supports mul with one vector!")
+            batch_encrypted_vec = copy.deepcopy(self.children[0].getBatchData())       # BatchEncryptedNumber
+            other_batch_data = self.children[1].getBatchData()
             if device_type == 'CPU':
                 self.batch_data = self.cpuBatchMUL_SUM(batch_encrypted_vec, other_batch_data, encoder)
             elif device_type == 'GPU':
@@ -560,6 +563,6 @@ class PlanNode(object):
             coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, pub_key)       # encode
             coefficients_list.append(coefficients)
         
-        batch_data = [a.dot(b) for a, b in zip(self_batch_data.slot_based_value, coefficients_list)]    # use multi-threads to call the GPU
+        batch_data = [a.__mul__(b).sum() for a, b in zip(self_batch_data.slot_based_value, coefficients_list)]    # use multi-threads to call the GPU
 
         return BatchEncryptedNumber(batch_data, scaling, self_batch_data.size, lazy_flag=True)

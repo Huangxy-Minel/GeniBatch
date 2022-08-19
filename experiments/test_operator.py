@@ -341,7 +341,6 @@ def test_mul():
     pen_store_A = fpn_store_A.encrypt(key_generator.public_key)
     pen_store_A = pen_store_A.obfuscation()
     res = pen_store_A.protective_r_dot(np.ascontiguousarray(matrix_B.transpose()))
-    print(res.decrypt(key_generator.privacy_key))
-    print(row_vec_A.dot(matrix_B))
-
+    print(res.get_PEN_ndarray())
+    print(type(res.get_PEN_ndarray()[0]))
 test_mul()
