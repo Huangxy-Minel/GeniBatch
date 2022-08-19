@@ -566,3 +566,23 @@ class PlanNode(object):
 
         return BatchEncryptedNumber(batch_data, scaling, self_batch_data.size, lazy_flag=True)
 
+    @staticmethod
+    def gpuBatchMUL_SUM_v2(self_batch_data:BatchEncryptedNumber, other_batch_data, encoder:BatchEncoder):
+        '''
+            Execute MUL operator, mul batch data of all children
+            Batch data of each children: PEN_store, store in BatchEncryptedNumber.value
+            Logic: copy encrypted batch data, mul with corresponded cofficients, then sum
+        '''
+        scaling = self_batch_data.scaling
+        pub_key = self_batch_data.slot_based_value[0].pub_key
+        '''Start multiplication'''
+        scaling *= encoder.scaling
+        coefficients_list = []
+        # quantization encode
+        for split_idx in range(encoder.size):
+            coefficients = [v[split_idx] for v in other_batch_data]
+            coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, pub_key)       # encode
+            coefficients_list.append(coefficients)
+        batch_data = [a.__mul__(b).sum() for a, b in zip(self_batch_data.slot_based_value, coefficients_list)]    # use multi-threads to call the GPU
+
+        return BatchEncryptedNumber(batch_data, scaling, self_batch_data.size, lazy_flag=True)

@@ -482,6 +482,14 @@ class BatchPlan(object):
             #     for node, batch_data in zip(one_level_opera_nodes, res):
             #         node.batch_data = batch_data
             #         node.state = 1
+            elif self.device_type == "GPU" and one_level_opera_nodes[0].operator == "batchMUL_SUM":
+                batch_encrypted_vec = copy.deepcopy(one_level_opera_nodes[0].children[0].getBatchData())       # BatchEncryptedNumber
+                batch_encrypted_vec.to_slot_based_value()
+                other_batch_data_list = [node.children[1].getBatchData() for node in one_level_opera_nodes]
+                res = [PlanNode.gpuBatchMUL_SUM_v2(batch_encrypted_vec, other_batch_data, self.encoder) for other_batch_data in other_batch_data_list]
+                for idx in range(len(one_level_opera_nodes)):
+                    one_level_opera_nodes[idx].batch_data = res[idx]
+                    one_level_opera_nodes[idx].state = 1
             else:
                 for node in one_level_opera_nodes:
                     '''single process'''
