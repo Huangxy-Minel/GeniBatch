@@ -404,7 +404,7 @@ class PlanNode(object):
         elif self.operator == "batchMUL_SUM":
             if self.size > 2:
                 raise NotImplementedError("Current version only supports mul with one vector!")
-            batch_encrypted_vec = copy.deepcopy(self.children[0].getBatchData())       # BatchEncryptedNumber
+            batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
             other_batch_data = self.children[1].getBatchData()
             if device_type == 'CPU':
                 self.batch_data = self.cpuBatchMUL_SUM(batch_encrypted_vec, other_batch_data, encoder)
@@ -551,9 +551,9 @@ class PlanNode(object):
             Logic: copy encrypted batch data, mul with corresponded cofficients, then sum
         '''
         scaling = self_batch_data.scaling
-        pub_key = self_batch_data.value.pub_key
         if not self_batch_data.lazy_flag:
             self_batch_data.to_slot_based_value()
+        pub_key = self_batch_data.slot_based_value[0].pub_key
         '''Start multiplication'''
         scaling *= encoder.scaling
         coefficients_list = []
@@ -562,7 +562,7 @@ class PlanNode(object):
             coefficients = [v[split_idx] for v in other_batch_data]
             coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, pub_key)       # encode
             coefficients_list.append(coefficients)
-        
         batch_data = [a.__mul__(b).sum() for a, b in zip(self_batch_data.slot_based_value, coefficients_list)]    # use multi-threads to call the GPU
 
         return BatchEncryptedNumber(batch_data, scaling, self_batch_data.size, lazy_flag=True)
+

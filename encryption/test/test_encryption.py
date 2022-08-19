@@ -120,10 +120,10 @@ def encrypted_add():
 
 def encrypted_mul():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=40)
-    matrixA = np.random.uniform(-1, 1, (1, 1000000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 1000000))
-    matrixC = np.random.uniform(-1, 1, (1000000, 50))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=True, max_processes=40)
+    matrixA = np.random.uniform(-1, 1, (1, 2278456))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 2278456))
+    matrixC = np.random.uniform(-1, 1, (2278456, 13))     # plaintext
     matrixA = matrixA.astype(np.float32)
     matrixB = matrixB.astype(np.float32)
     matrixC = matrixC.astype(np.float32)
