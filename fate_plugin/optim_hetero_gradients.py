@@ -12,7 +12,7 @@ class HeteroGradient(object):
         LOGGER.debug(f"feature shape: {feature.shape}")
         LOGGER.debug(f"fore_gradient shape: {fore_gradient.get_shape()}")
         # start_time = time.time()
-        gradient = fore_gradient.r_dot(np.ascontiguousarray(feature.transpose()))
+        gradient = fore_gradient.protective_r_dot(np.ascontiguousarray(feature.transpose()))
         # end_time = time.time()
         # LOGGER.debug(f"dot time is: {end_time - start_time}")
         all_g = fixed_point_encoder.decode(gradient)

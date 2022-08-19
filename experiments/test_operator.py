@@ -334,13 +334,14 @@ def test_matrix_operation():
 
 def test_mul():
     row_vec_A = np.random.uniform(-1, 1, 1000000)
-    matrix_B = np.random.uniform(-1, 1, (1000000, 20))
+    matrix_B = np.random.uniform(-1, 1, (1000000, 11))
     key_generator = PaillierEncrypt()
     key_generator.generate_key()
     fpn_store_A = FPN_store.init_from_arr(row_vec_A, key_generator.public_key.n, key_generator.public_key.max_int)
     pen_store_A = fpn_store_A.encrypt(key_generator.public_key)
     pen_store_A = pen_store_A.obfuscation()
-    res = pen_store_A.r_dot(np.ascontiguousarray(matrix_B.transpose()))
-    print(1)
+    res = pen_store_A.protective_r_dot(np.ascontiguousarray(matrix_B.transpose()))
+    print(res.decrypt(key_generator.privacy_key))
+    print(row_vec_A.dot(matrix_B))
 
 test_mul()

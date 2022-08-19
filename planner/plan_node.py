@@ -405,6 +405,10 @@ class PlanNode(object):
             batch_encrypted_vec = self.children[0].getBatchData()       # BatchEncryptedNumber
             if device_type == 'CPU':
                 self.batch_data = self.cpuBatchMUL_SUM(batch_encrypted_vec, other_batch_data, encoder)
+            elif device_type == 'GPU':
+                self.batch_data = self.gpuBatchMUL_SUM(batch_encrypted_vec, other_batch_data, encoder)
+            else:
+                raise NotImplementedError("Only support CPU & GPU device!")
         elif self.operator == "Merge":
             self.batch_data = []
             for i in range(self.size):
@@ -498,7 +502,9 @@ class PlanNode(object):
             coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, pub_key)       # encode
             coefficients_list.append(coefficients)
         
-        batch_data = [self_batch_data.slot_based_value[split_idx] * coefficients_list[split_idx] for split_idx in range(encoder.size)]    # use multi-threads to call the GPU
+        batch_data = [a * b for a, b in zip(self_batch_data.slot_based_value, coefficients_list)]    # use multi-threads to call the GPU
+
+        # batch_data = [self_batch_data.slot_based_value[split_idx] * coefficients_list[split_idx] for split_idx in range(encoder.size)]    # use multi-threads to call the GPU
         return BatchEncryptedNumber(batch_data, scaling, self_batch_data.size, lazy_flag=True)
 
     @staticmethod
@@ -534,3 +540,26 @@ class PlanNode(object):
         # time2 = time.time()
         # print("Process duration: ", time2 - time1)
         return res
+
+    def gpuBatchMUL_SUM(self, self_batch_data:BatchEncryptedNumber, other_batch_data, encoder:BatchEncoder):
+        '''
+            Execute MUL operator, mul batch data of all children
+            Batch data of each children: PEN_store, store in BatchEncryptedNumber.value
+            Logic: copy encrypted batch data, mul with corresponded cofficients, then sum
+        '''
+        scaling = self_batch_data.scaling
+        pub_key = self_batch_data.value.pub_key
+        if not self_batch_data.lazy_flag:
+            self_batch_data.to_slot_based_value()
+        '''Start multiplication'''
+        scaling *= encoder.scaling
+        coefficients_list = []
+        # quantization encode
+        for split_idx in range(encoder.size):
+            coefficients = [v[split_idx] for v in other_batch_data]
+            coefficients = FPN_store.quantization(coefficients, encoder.scaling, encoder.bit_width, encoder.sign_bits, pub_key)       # encode
+            coefficients_list.append(coefficients)
+        
+        batch_data = [a.dot(b) for a, b in zip(self_batch_data.slot_based_value, coefficients_list)]    # use multi-threads to call the GPU
+
+        return BatchEncryptedNumber(batch_data, scaling, self_batch_data.size, lazy_flag=True)
