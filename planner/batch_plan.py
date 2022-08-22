@@ -305,7 +305,7 @@ class BatchPlan(object):
         encode_slot_mem += 8 - encode_slot_mem % 8
 
         max_element_num = int(self.vector_mem_size / encode_slot_mem)     # max element num in one vector
-        split_num = math.ceil(self.vector_size / max_element_num)
+        split_num = math.ceil(vec_len / max_element_num)
 
         encode_para = (self.max_value, self.element_mem_size, encode_slot_mem, encode_sign_bits)
         batch_scheme = [(max_element_num, split_num)]
