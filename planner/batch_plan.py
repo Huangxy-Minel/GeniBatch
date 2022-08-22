@@ -177,6 +177,7 @@ class BatchPlan(object):
         # self.opera_nodes_list.append(merge_nodes_list)
         self.merge_nodes = merge_nodes_list
         self.mul_times += 1
+        self.sum_times += 1
 
     def shiftSum(self, sum_idx_list:list, if_shift:bool):
         '''
@@ -275,6 +276,41 @@ class BatchPlan(object):
             if opera_nodes_list != []:
                 self.opera_nodes_list.insert(0, opera_nodes_list)
             node_in_level = nodes_next_level
+
+    def generateBatchScheme(self, operatorSequence, vec_len=None):
+        max_slot_size = self.element_mem_size
+        mul_times = 0
+        add_times = 0
+        sum_times = 0
+        for operator in operatorSequence:
+            if operator == 'batchADD':
+                max_slot_size += 1
+                add_times += 1
+            elif operator == 'bathMUL':
+                max_slot_size += max_slot_size
+                mul_times += 1
+            elif operator == 'batchSUM':
+                max_slot_size += math.ceil(math.log2(vec_len))
+                sum_times += 1
+            elif operator == 'batchMUL_SUM':
+                max_slot_size += self.element_mem_size + math.ceil(math.log2(vec_len))
+                mul_times += 1
+                sum_times += 1
+            else:
+                raise NotImplementedError("Invalid operator!")
+        encode_sign_bits = max_slot_size - self.element_mem_size
+        encode_sign_bits += 8 - encode_sign_bits % 8
+        max_slot_size = encode_sign_bits + self.element_mem_size
+        encode_slot_mem = max_slot_size + max_slot_size * mul_times + add_times + sum_times * math.ceil(math.log2(vec_len))
+        encode_slot_mem += 8 - encode_slot_mem % 8
+
+        max_element_num = int(self.vector_mem_size / encode_slot_mem)     # max element num in one vector
+        split_num = math.ceil(self.vector_size / max_element_num)
+
+        encode_para = (self.max_value, self.element_mem_size, encode_slot_mem, encode_sign_bits)
+        batch_scheme = [(max_element_num, split_num)]
+        return encode_para, batch_scheme
+
 
     def setBatchScheme(self, batch_scheme, force_flag:bool=False):
         if force_flag:
