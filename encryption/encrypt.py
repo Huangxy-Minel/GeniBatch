@@ -41,6 +41,8 @@ class BatchEncryptedNumber(object):
         if not self.lazy_flag:
             if isinstance(other, list) and len(self.value) == len(other):
                 value = [v1 + v2 for v1, v2 in zip(self.value, other)]
+            elif isinstance(other, np.ndarray) and len(self.value) == len(other):
+                value = [v1 + v2 for v1, v2 in zip(self.value, other)]
             elif isinstance(other, BatchEncryptedNumber) and len(self.value) == len(other.value):
                 value = [v1 + v2 for v1, v2 in zip(self.value, other.value)]
             else:
@@ -59,6 +61,8 @@ class BatchEncryptedNumber(object):
     def batch_sub(self, other):
         if not self.lazy_flag:
             if isinstance(other, list) and len(self.value) == len(other):
+                value = [v1 - v2 for v1, v2 in zip(self.value, other)]
+            elif isinstance(other, np.ndarray) and len(self.value) == len(other):
                 value = [v1 - v2 for v1, v2 in zip(self.value, other)]
             elif isinstance(other, BatchEncryptedNumber) and len(self.value) == len(other.value):
                 value = [v1 - v2 for v1, v2 in zip(self.value, other.value)]

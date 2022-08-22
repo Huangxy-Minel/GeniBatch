@@ -550,6 +550,13 @@ class BatchPlan(object):
         res = [PlanNode.cpuBatchMUL_SUM(self_batch_data, other_batch_data, encoder) for other_batch_data in other_split_matrix]
         return res
 
+    def split_row_vec(self, row_vec):
+        element_num, split_num = self.batch_scheme[0]
+        row_vec_split = [row_vec[i:i+element_num] for i in range(0, len(row_vec), element_num)]
+        if len(row_vec_split[-1] < element_num):
+            row_vec_split[-1] = np.concatenate((row_vec_split[-1], np.zeros(element_num - len(row_vec_split[-1]))))
+        return row_vec_split
+
     def printBatchPlan(self):
         '''Use to debug'''
         node_in_level = [self.root_nodes]
