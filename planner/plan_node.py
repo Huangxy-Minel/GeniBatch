@@ -437,8 +437,11 @@ class PlanNode(object):
         '''
         '''Init scaling'''
         scaling = self_encrypted_vec.scaling
-        # encode firstly
-        other_batch_data = [encoder.batchEncode(split_row_vec) for split_row_vec in other_row_vec]    # a list of BatchEncoderNumber
+        if not isinstance(other_row_vec, BatchEncryptedNumber):
+            # encode firstly
+            other_batch_data = [encoder.batchEncode(split_row_vec) for split_row_vec in other_row_vec]    # a list of BatchEncoderNumber
+        else:
+            other_batch_data = other_row_vec
         '''Re-scaling'''
         if scaling < encoder.scaling:
             other_batch_data = [v * int(encoder.scaling / scaling) for v in other_batch_data]

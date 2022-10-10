@@ -1,5 +1,6 @@
+from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store, PEN_store
 import numpy as np
-import time
+import time, sys, pickle
 from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
@@ -11,9 +12,9 @@ from federatedml.util.fixpoint_solver import FixedPointEncoder
 
 def encrypt_decrypt():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=3)
-    matrixA = np.random.uniform(-1, 1, (1, 100000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (100000, 1))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=True, max_processes=3)
+    matrixA = np.random.uniform(-1, 1, (1, 1000000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1000000, 1))     # plaintext
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
@@ -35,6 +36,10 @@ def encrypt_decrypt():
     encrypter.generate_key()
     myBatchPlan.setEncrypter()
     encrypted_row_vec = myBatchPlan.encrypt(matrixA, batch_scheme[0], encrypter.public_key)
+    ################Traffic Testing#################
+    temp_bytes = pickle.dumps(encrypted_row_vec)
+    print(f"Traffic size: {sys.getsizeof(temp_bytes)}")
+    raise NotImplementedError("--------------------DEBUG--------------------")
     '''Decrypt'''
     decrypted_vec = myBatchPlan.decrypt(encrypted_row_vec, encrypter.privacy_key)
     print("-------------------After decryption:-------------------")
@@ -120,10 +125,10 @@ def encrypted_add():
 
 def encrypted_mul():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=True, max_processes=40)
-    matrixA = np.random.uniform(-1, 1, (1, 2278456))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 2278456))
-    matrixC = np.random.uniform(-1, 1, (2278456, 13))     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=40)
+    matrixA = np.random.uniform(-1, 1, (1, 1000000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 1000000))
+    matrixC = np.random.uniform(0, 1, (1000000, 50))     # plaintext
     matrixA = matrixA.astype(np.float32)
     matrixB = matrixB.astype(np.float32)
     matrixC = matrixC.astype(np.float32)
@@ -329,5 +334,51 @@ def shift_sum():
     # for slot_v_list in slot_based_v_sum: v_sum += slot_v_list[0]
     print(slot_based_v_sum[0])
     print(matrixA.sum())
+
+def gpu_mul():
+    # matrixA = np.random.uniform(-1, 1, 1000000)
+    matrixA = np.array([0.5 for i in range(1000000)])
+    matrixB = np.random.uniform(0, 1, (1000000, 50))     # plaintext
+    encrypter = PaillierEncrypt()
+    encrypter.generate_key()
+    '''Encrypt'''
+    enc_forward_grad = PEN_store.init_from_arr(matrixA, encrypter.get_public_key()).obfuscation()
+    fixed_point_encoder = FixedPointEncoder()
+    matrixB = fixed_point_encoder.encode(matrixB)
+    time1 = time.time()
+    temp = enc_forward_grad.protective_r_dot(np.ascontiguousarray(matrixB.T))
+    time2 = time.time()
+    print(time2 - time1)
+
+def test_para_add():
+    matrixA = np.random.uniform(-1, 1, (1, 1000))     # ciphertext
+    matrixB = np.random.uniform(-1, 1, 1000)
+    matrixC = np.random.uniform(0, 1, (1000, 50))     # plaintext
+    '''Construct BatchPlan'''
+    data_store = DataStorage()
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, max_value=1, device_type='CPU', multi_process_flag=True, max_processes=2)
+
+    encode_para, batch_scheme = myBatchPlan.generateBatchScheme(['batchADD', 'batchMUL_SUM'], vec_len=matrixA.shape[1])
+    myBatchPlan.setBatchScheme(batch_scheme, force_flag=True)
+    myBatchPlan.setEncoder(encode_para)
+    myBatchPlan.setEncrypter()
+
+    cipher = PaillierEncrypt()
+    cipher.generate_key()
+
+    enc_A = myBatchPlan.encrypt(matrixA, batch_scheme[0], cipher.public_key)
+    split_B = myBatchPlan.split_row_vec(matrixB)
+    res = myBatchPlan.BatchAddParallel(enc_A, split_B)
+    res = myBatchPlan.BatchMulParallel(res, matrixC)
+
+    dec = []
+    for row in res:
+        temp = myBatchPlan.decrypt(row, cipher.privacy_key)
+        res_sum = 0
+        for slot_v in temp:
+            res_sum += slot_v[0]
+        dec.append(res_sum)
+    print(np.array(dec))
+    print((matrixA + matrixB).dot(matrixC))
 
 encrypted_mul()

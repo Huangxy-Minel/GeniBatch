@@ -9,8 +9,6 @@ from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store,
 
 from federatedml.util import LOGGER
 
-from joblib import Parallel, delayed
-
 import multiprocessing
 
 
@@ -209,7 +207,7 @@ class BatchPlan(object):
                 self.encode_sign_bits = merge_node.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
                 self.encode_sign_bits += 8 - self.encode_sign_bits % 8
                 merge_node.max_slot_size = self.encode_sign_bits + self.element_mem_size
-                self.encode_slot_mem = merge_node.max_slot_size + merge_node.max_slot_size * self.mul_times + self.add_times + self.sum_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
+                self.encode_slot_mem = merge_node.max_slot_size + self.element_mem_size * self.mul_times + self.add_times + self.sum_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
                 self.encode_slot_mem += 8 - self.encode_slot_mem % 8
                 max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
                 if self.vector_size > max_element_num:
@@ -287,7 +285,7 @@ class BatchPlan(object):
                 max_slot_size += 1
                 add_times += 1
             elif operator == 'bathMUL':
-                max_slot_size += max_slot_size
+                max_slot_size += self.element_mem_size
                 mul_times += 1
             elif operator == 'batchSUM':
                 max_slot_size += math.ceil(math.log2(vec_len))
@@ -299,9 +297,12 @@ class BatchPlan(object):
             else:
                 raise NotImplementedError("Invalid operator!")
         encode_sign_bits = max_slot_size - self.element_mem_size
+
         encode_sign_bits += 8 - encode_sign_bits % 8
         max_slot_size = encode_sign_bits + self.element_mem_size
-        encode_slot_mem = max_slot_size + max_slot_size * mul_times + add_times + sum_times * math.ceil(math.log2(vec_len))
+
+        encode_slot_mem = max_slot_size + self.element_mem_size * mul_times + add_times + sum_times * math.ceil(math.log2(vec_len))
+
         encode_slot_mem += 8 - encode_slot_mem % 8
 
         max_element_num = int(self.vector_mem_size / encode_slot_mem)     # max element num in one vector
@@ -550,6 +551,69 @@ class BatchPlan(object):
         res = [PlanNode.cpuBatchMUL_SUM(self_batch_data, other_batch_data, encoder) for other_batch_data in other_split_matrix]
         return res
 
+    def BatchAddGPU(self, batch_enc_A, array_B):
+        encoded_B = FPN_store.batch_encode(array_B, self.encoder.scaling, self.encoder.size, self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits, batch_enc_A.value.pub_key)
+        res = batch_enc_A.value + encoded_B
+        return BatchEncryptedNumber(res, batch_enc_A.scaling, batch_enc_A.size)
+
+
+    def BatchAddParallel(self, batch_enc_A, batch_B):
+        tasks_num_per_proc = math.ceil(len(batch_enc_A.value) / self.max_processes)
+        scaling = batch_enc_A.scaling
+        enc_size = batch_enc_A.size
+        A_in_partition = [BatchEncryptedNumber(batch_enc_A.value[i:i+tasks_num_per_proc], scaling, enc_size) 
+                                                                for i in range(0, batch_enc_A.get_value_length(), tasks_num_per_proc)]
+        B_in_partition = [batch_B[i:i+tasks_num_per_proc]
+                                                                for i in range(0, len(batch_B), tasks_num_per_proc)]
+        pool = multiprocessing.Pool(processes=len(A_in_partition))
+        sub_process = [pool.apply_async(PlanNode.cpuBatchADD, (b1, b2, self.encoder,)) for b1, b2 in zip(A_in_partition, B_in_partition)]
+        pool.close()
+        pool.join()
+        res = [p.get() for p in sub_process]
+        add_res = res[0]
+        for i in range(1, len(res)):
+            add_res.merge(res[i])
+        return add_res
+
+    def BatchMulGPU(self, batch_enc_A, matrix_B):
+        batch_enc_A.to_slot_based_value()
+        other_batch_data_list = np.array([self.split_row_vec(vec) for vec in matrix_B.T])
+        res = [PlanNode.gpuBatchMUL_SUM_v2(batch_enc_A, other_batch_data, self.encoder) for other_batch_data in other_batch_data_list]
+        return res
+
+    def BatchMulParallel(self, batch_enc_A, matrix_B):
+        '''multiple processes'''
+        if self.max_processes: N_JOBS = self.max_processes
+        else: N_JOBS = multiprocessing.cpu_count()
+        tasks_num_per_proc = math.ceil(len(batch_enc_A.value) / N_JOBS)
+        '''partition inputs'''
+        scaling = batch_enc_A.scaling
+        size = batch_enc_A.size
+        self_batch_data_in_partition = [BatchEncryptedNumber(batch_enc_A.value[i:i+tasks_num_per_proc], scaling, size) 
+                                                                    for i in range(0, batch_enc_A.get_value_length(), tasks_num_per_proc)]
+        # other_batch_data = np.array([node.children[1].getBatchData() for node in one_level_opera_nodes])
+        other_batch_data = np.array([self.split_row_vec(vec) for vec in matrix_B.T])
+        other_batch_data_in_partition = [other_batch_data[:, i:i+tasks_num_per_proc, :] for i in range(0, batch_enc_A.get_value_length(), tasks_num_per_proc)]
+
+        '''start process'''
+        pool = multiprocessing.Pool(processes=len(self_batch_data_in_partition))
+        sub_process = [pool.apply_async(self.para_exec_batch_mul, (b1, b2, self.encoder,)) 
+                                        for b1, b2 in zip(self_batch_data_in_partition, other_batch_data_in_partition)]
+
+        pool.close()
+        pool.join()
+        res = [p.get() for p in sub_process]
+
+        '''Merge result'''
+        mul_res = []
+        for idx in range(matrix_B.shape[1]):
+            temp = res[0][idx]
+            for i in range(1, len(res)):
+                temp.merge(res[i][idx])
+            mul_res.append(temp)
+
+        return mul_res
+        
     def split_row_vec(self, row_vec):
         element_num, split_num = self.batch_scheme[0]
         row_vec_split = [row_vec[i:i+element_num] for i in range(0, len(row_vec), element_num)]
