@@ -1,7 +1,7 @@
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store, PEN_store
 import numpy as np
 import time, sys, pickle
-from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan
+from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan, PlanNode
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
 from federatedml.FATE_Engine.python.BatchPlan.encryption.encrypt import BatchEncryptedNumber, BatchEncryption
@@ -124,18 +124,18 @@ def encrypted_add():
         print(output_matrix == result)
 
 def encrypted_mul():
+    np.random.seed(0)
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=40)
-    matrixA = np.random.uniform(-1, 1, (1, 1000000))     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 1000000))
-    matrixC = np.random.uniform(0, 1, (1000000, 50))     # plaintext
-    matrixA = matrixA.astype(np.float32)
-    matrixB = matrixB.astype(np.float32)
-    matrixC = matrixC.astype(np.float32)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=False, max_processes=40)
+    matrixA = np.random.uniform(-1, 1, (1, 100)).astype(np.float32)     # ciphertext
+    # matrixB = np.random.uniform(-1, 1, (1, 100)).astype(np.float32)
+    np.random.seed(1)
+    matrixC = np.random.uniform(0, 1, (100, 1)).astype(np.float32)     # plaintext
+    print(matrixA.dot(matrixC))
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
-    myBatchPlan.matrixAdd([matrixB], [False])
+    # myBatchPlan.matrixAdd([matrixB], [False])
     fore_gradient_node = myBatchPlan.root_nodes[0]
     myBatchPlan.matrixMul([matrixC])
     print("\n-------------------Batch Plan before weave:-------------------")
@@ -164,6 +164,9 @@ def encrypted_mul():
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")
     outputs = myBatchPlan.parallelExec()
+    # outputs = [[]]
+    # for row in matrixC.T:
+    #     outputs[0].append(PlanNode.cpuBatchMUL_SUM(encrypted_row_vec, myBatchPlan.split_row_vec(row), myBatchPlan.encoder))
     '''Decrypt & shift sum'''
     res = []
     for output in outputs:
@@ -185,7 +188,8 @@ def encrypted_mul():
     print("\n-------------------Batch Plan output:-------------------")
     print(output_matrix)
     print("\n-------------------Numpy output:-------------------")
-    result = (matrixA + matrixB).dot(matrixC)
+    # result = (matrixA + matrixB).dot(matrixC)
+    result = matrixA.dot(matrixC)
     print(result)
     if np.allclose(output_matrix, result):
         print("\n-------------------Test Pass!-------------------")

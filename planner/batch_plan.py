@@ -41,8 +41,6 @@ class BatchPlan(object):
     '''
     
     def __init__(self, data_storage:DataStorage, vector_mem_size=1024, element_mem_size=64, max_value=1, device_type='CPU', multi_process_flag=False, max_processes=None):
-        if vector_mem_size != 1024 and vector_mem_size!= 2048 and vector_mem_size != 4096:
-            raise NotImplementedError("Vector memory size of batchplan should be 1024 or 2048 or 4096")
         '''Use for BatchPlan'''
         self.root_nodes = []                        # each root node represents one CompTree
         self.opera_nodes_list = []                  # each element in this list represents a level of operation nodes. nodes_list[0] is the lowest level in BatchPlan
@@ -205,10 +203,12 @@ class BatchPlan(object):
             # handle BatchPlan which contains MUL operator
             for merge_node in self.merge_nodes:
                 self.encode_sign_bits = merge_node.max_slot_size - self.element_mem_size    # each element will be quantized using self.element_mem_size, and joint with self.encode_sign_bits for its sign
-                self.encode_sign_bits += 8 - self.encode_sign_bits % 8
+                if self.encode_sign_bits % 8 != 0:
+                    self.encode_sign_bits += 8 - self.encode_sign_bits % 8
                 merge_node.max_slot_size = self.encode_sign_bits + self.element_mem_size
-                self.encode_slot_mem = merge_node.max_slot_size + self.element_mem_size * self.mul_times + self.add_times + self.sum_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
-                self.encode_slot_mem += 8 - self.encode_slot_mem % 8
+                self.encode_slot_mem = merge_node.max_slot_size + merge_node.max_slot_size * self.mul_times + self.add_times + self.sum_times * math.ceil(math.log2(self.vector_size))  # the final memory for each slot
+                if self.encode_slot_mem % 8 != 0:
+                    self.encode_slot_mem += 8 - self.encode_slot_mem % 8
                 max_element_num = int(self.vector_mem_size / self.encode_slot_mem)     # max element num in one vector
                 if self.vector_size > max_element_num:
                     split_num = math.ceil(self.vector_size / max_element_num)   # represents for this CompTree, each vector can be splited to split_num
@@ -292,18 +292,20 @@ class BatchPlan(object):
                 sum_times += 1
             elif operator == 'batchMUL_SUM':
                 max_slot_size += self.element_mem_size + math.ceil(math.log2(vec_len))
+                print(max_slot_size)
                 mul_times += 1
                 sum_times += 1
             else:
                 raise NotImplementedError("Invalid operator!")
         encode_sign_bits = max_slot_size - self.element_mem_size
-
-        encode_sign_bits += 8 - encode_sign_bits % 8
+        if encode_sign_bits % 8 != 0:
+            encode_sign_bits += 8 - encode_sign_bits % 8
         max_slot_size = encode_sign_bits + self.element_mem_size
 
-        encode_slot_mem = max_slot_size + self.element_mem_size * mul_times + add_times + sum_times * math.ceil(math.log2(vec_len))
+        encode_slot_mem = max_slot_size + max_slot_size * mul_times + add_times + sum_times * math.ceil(math.log2(vec_len))
 
-        encode_slot_mem += 8 - encode_slot_mem % 8
+        if encode_slot_mem % 8 != 0:
+            encode_slot_mem += 8 - encode_slot_mem % 8
 
         max_element_num = int(self.vector_mem_size / encode_slot_mem)     # max element num in one vector
         split_num = math.ceil(vec_len / max_element_num)

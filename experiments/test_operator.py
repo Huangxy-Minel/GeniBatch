@@ -453,10 +453,11 @@ def test_operation():
 
 def compression_ratio():
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, max_value=1, device_type='CPU', multi_process_flag=True, max_processes=2)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=512, element_mem_size=24, max_value=1, device_type='CPU', multi_process_flag=True, max_processes=2)
 
-    encode_para, batch_scheme = myBatchPlan.generateBatchScheme(['batchMUL_SUM'], 1000000)
+    encode_para, batch_scheme = myBatchPlan.generateBatchScheme(['batchADD','batchMUL_SUM'], 1000000)
     print(batch_scheme)
+    print(encode_para)
 
 
 # res = test_encryption()
