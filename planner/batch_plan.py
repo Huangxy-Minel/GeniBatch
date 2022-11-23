@@ -440,17 +440,17 @@ class BatchPlan(object):
             plaintext_row_vec = self.encrypter.gpuBatchDecrypt(encrypted_data, self.encoder, private_key)
         return plaintext_row_vec
 
-    def serialExec(self):
-        '''Serially execute each operator, from bottom of the DAG. Call it when use CPUs'''
-        self.assignVector()
-        outputs = []
-        # Execute from operation level 0 
-        for nodes_in_level in self.opera_nodes_list:
-            for node in nodes_in_level:
-                node.serialExec()
-        for root in self.root_nodes:
-            outputs.append(root.getBatchData())
-        return outputs
+    # def serialExec(self):
+    #     '''Serially execute each operator, from bottom of the DAG. Call it when use CPUs'''
+    #     self.assignVector()
+    #     outputs = []
+    #     # Execute from operation level 0 
+    #     for nodes_in_level in self.opera_nodes_list:
+    #         for node in nodes_in_level:
+    #             node.serialExec()
+    #     for root in self.root_nodes:
+    #         outputs.append(root.getBatchData())
+    #     return outputs
 
     def parallelExec(self, transfer=None, role=None, current_suffix=None):
         '''Parallel execute each operator, from bottom of the DAG. Call it when use GPUs'''
@@ -458,24 +458,6 @@ class BatchPlan(object):
         outputs = []
         for one_level_opera_nodes in self.opera_nodes_list:
             time1 = time.time()
-            # if self.multi_process_flag and one_level_opera_nodes[0].operator == "batchMUL_SUM":
-            #     '''multiple processes'''
-            #     N_JOBS = self.max_processes
-            #     time3 = time.time()
-            #     batch_encrypted_vec = copy.deepcopy(one_level_opera_nodes[0].children[0].getBatchData())       # BatchEncryptedNumber
-            #     other_batch_data_list = [node.children[1].getBatchData() for node in one_level_opera_nodes]
-            #     pool = multiprocessing.Pool(processes=N_JOBS)
-            #     sub_process = [pool.apply_async(PlanNode.cpuBatchMUL_SUM, (batch_encrypted_vec, other_batch_data_list[idx], self.encoder, )) 
-            #                                             for idx in range(len(other_batch_data_list))]
-            #     pool.close()
-            #     time4 = time.time()
-            #     LOGGER.info(f"Start process in batchMUL_SUM costs: {time4 - time3}")
-            #     pool.join()
-            #     time3 = time.time()
-            #     LOGGER.info(f"Get res costs: {time3 - time4}")
-            #     for node, p in zip(one_level_opera_nodes, sub_process):
-            #         node.batch_data = p.get()
-            #         node.state = 1
             if self.multi_process_flag and self.device_type == "CPU" and one_level_opera_nodes[0].operator == "batchMUL_SUM":
                 '''multiple processes'''
                 time3 = time.time()
@@ -511,16 +493,6 @@ class BatchPlan(object):
                         one_level_opera_nodes[idx].batch_data.merge(res[i][idx])
                 time3 = time.time()
                 LOGGER.info(f"merge results in batchMUL costs: {time3 - time4}")
-            # elif self.multi_process_flag and one_level_opera_nodes[0].operator == "batchSUM":
-            #     N_JOBS = self.max_processes
-            #     pool = multiprocessing.Pool(processes=N_JOBS)
-            #     sub_process = [pool.apply_async(PlanNode.cpuBatchSUM, (node.children[0].getBatchData(), )) for node in one_level_opera_nodes]
-            #     pool.close()
-            #     pool.join()
-            #     res = [p.get() for p in sub_process]
-            #     for node, batch_data in zip(one_level_opera_nodes, res):
-            #         node.batch_data = batch_data
-            #         node.state = 1
             elif self.device_type == "GPU" and one_level_opera_nodes[0].operator == "batchMUL_SUM":
                 batch_encrypted_vec = copy.deepcopy(one_level_opera_nodes[0].children[0].getBatchData())       # BatchEncryptedNumber
                 batch_encrypted_vec.to_slot_based_value()

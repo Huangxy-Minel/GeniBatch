@@ -20,22 +20,22 @@ class BatchEncryptedNumber(object):
         else:
             self.value = value
     
-    def __add__(self, other):
-        if not isinstance(self.value, list):
-            raise TypeError("In CPU mode, BatchEncryptedNumber.value should be a list of PaillierEncryptedNumber!")
-        if isinstance(other, list) and len(self.value) == len(other):
-            value = [v1 + v2 for v1, v2 in zip(self.value, other)]
-        elif isinstance(other, BatchEncryptedNumber) and len(self.value) == len(other.value):
-            value = [v1 + v2 for v1, v2 in zip(self.value, other.value)]
-        return BatchEncryptedNumber(value, self.scaling, self.size)
+    # def __add__(self, other):
+    #     if not isinstance(self.value, list):
+    #         raise TypeError("In CPU mode, BatchEncryptedNumber.value should be a list of PaillierEncryptedNumber!")
+    #     if isinstance(other, list) and len(self.value) == len(other):
+    #         value = [v1 + v2 for v1, v2 in zip(self.value, other)]
+    #     elif isinstance(other, BatchEncryptedNumber) and len(self.value) == len(other.value):
+    #         value = [v1 + v2 for v1, v2 in zip(self.value, other.value)]
+    #     return BatchEncryptedNumber(value, self.scaling, self.size)
 
-    def __mul__(self, other):
-        if not isinstance(self.value, list):
-            raise TypeError("In CPU mode, BatchEncryptedNumber.value should be a list of PaillierEncryptedNumber!")
-        if len(self.value) != len(other):
-            raise NotImplementedError("The shapes of self and other are not equal!")
-        value = [v1 * v2 for v1, v2 in zip(self.value, other)]
-        return BatchEncryptedNumber(value, self.scaling, self.size)
+    # def __mul__(self, other):
+    #     if not isinstance(self.value, list):
+    #         raise TypeError("In CPU mode, BatchEncryptedNumber.value should be a list of PaillierEncryptedNumber!")
+    #     if len(self.value) != len(other):
+    #         raise NotImplementedError("The shapes of self and other are not equal!")
+    #     value = [v1 * v2 for v1, v2 in zip(self.value, other)]
+    #     return BatchEncryptedNumber(value, self.scaling, self.size)
 
     def batch_add(self, other):
         if not self.lazy_flag:
