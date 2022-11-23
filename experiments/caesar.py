@@ -10,12 +10,9 @@ from federatedml.secureprotol import PaillierEncrypt
 from federatedml.util.fixpoint_solver import FixedPointEncoder
 
 def test_secure_matrix_mul():
-    np.random.seed(0)
-    random.seed(0)
     data_store = DataStorage()
     myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=False, max_processes=40)
     matrixA = np.random.uniform(-1, 0, (1, 1)).astype(np.float32)
-    np.random.seed(1)
     matrixC = np.random.uniform(-1, 0, (1, 1)).astype(np.float32)
 
     # row_vec_A = row_vec_A / len(row_vec_A[0])

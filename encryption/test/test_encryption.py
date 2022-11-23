@@ -126,16 +126,16 @@ def encrypted_add():
 def encrypted_mul():
     np.random.seed(0)
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=False, max_processes=40)
-    matrixA = np.random.uniform(-1, 1, (1, 100)).astype(np.float32)     # ciphertext
-    # matrixB = np.random.uniform(-1, 1, (1, 100)).astype(np.float32)
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=40)
+    matrixA = np.random.uniform(-1, 1, (1, 1000000)).astype(np.float32)     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 1000000)).astype(np.float32)
     np.random.seed(1)
-    matrixC = np.random.uniform(0, 1, (100, 1)).astype(np.float32)     # plaintext
+    matrixC = np.random.uniform(-1, 1, (1000000, 50)).astype(np.float32)     # plaintext
     print(matrixA.dot(matrixC))
 
     '''Contruct BatchPlan'''
     myBatchPlan.fromMatrix(matrixA, True)
-    # myBatchPlan.matrixAdd([matrixB], [False])
+    myBatchPlan.matrixAdd([matrixB], [False])
     fore_gradient_node = myBatchPlan.root_nodes[0]
     myBatchPlan.matrixMul([matrixC])
     print("\n-------------------Batch Plan before weave:-------------------")
@@ -188,8 +188,8 @@ def encrypted_mul():
     print("\n-------------------Batch Plan output:-------------------")
     print(output_matrix)
     print("\n-------------------Numpy output:-------------------")
-    # result = (matrixA + matrixB).dot(matrixC)
-    result = matrixA.dot(matrixC)
+    result = (matrixA + matrixB).dot(matrixC)
+    # result = matrixA.dot(matrixC)
     print(result)
     if np.allclose(output_matrix, result):
         print("\n-------------------Test Pass!-------------------")
