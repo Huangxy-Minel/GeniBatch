@@ -1,6 +1,6 @@
 from federatedml.FATE_Engine.python.bigintengine.gpu.gpu_store import FPN_store, PEN_store
 import numpy as np
-import time, sys, pickle
+import time, sys, pickle, copy, math
 from federatedml.FATE_Engine.python.BatchPlan.planner.batch_plan import BatchPlan, PlanNode
 from federatedml.FATE_Engine.python.BatchPlan.storage.data_store import DataStorage
 from federatedml.FATE_Engine.python.BatchPlan.encoding.encoder import BatchEncoder
@@ -126,11 +126,10 @@ def encrypted_add():
 def encrypted_mul():
     np.random.seed(0)
     data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='CPU', multi_process_flag=True, max_processes=40)
-    matrixA = np.random.uniform(-1, 1, (1, 1000000)).astype(np.float32)     # ciphertext
-    matrixB = np.random.uniform(-1, 1, (1, 1000000)).astype(np.float32)
-    np.random.seed(1)
-    matrixC = np.random.uniform(-1, 1, (1000000, 50)).astype(np.float32)     # plaintext
+    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, device_type='GPU', multi_process_flag=True, max_processes=40)
+    matrixA = np.random.uniform(-1, 1, (1, 5000000)).astype(np.float32)     # ciphertext
+    matrixB = np.random.uniform(-1, 1, (1, 5000000)).astype(np.float32)
+    matrixC = np.random.uniform(-1, 1, (5000000, 9)).astype(np.float32)     # plaintext
     print(matrixA.dot(matrixC))
 
     '''Contruct BatchPlan'''
@@ -228,75 +227,148 @@ def scalar_mul():
     print("encode A: ", '0x%x'%decrypted_A[0])
 
 def lr_procedure():
-    data_store = DataStorage()
-    myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=32)
-    self_fore_gradient = np.random.uniform(-1, 1, (1, 300))     # ciphertext
-    host_fore_gradient = np.random.uniform(-1, 1, (1, 300))
-    self_feature = np.random.uniform(-1, 1, (300, 20))     # plaintext
+    sample_num = 5000000
+    feature_num = 9
+    host_num = 1
+    print("Please input 1 for GPU, 0 for CPU:")
+    if_GPU = int(input())
+    np.random.seed(0)
+    self_fore_gradient = np.random.uniform(-1, 1, sample_num).astype(np.float32)     # ciphertext
+    host_fore_gradient = np.random.uniform(-1, 1, sample_num).astype(np.float32)
+
+    self_feature = np.random.uniform(0, 1, (sample_num, feature_num))     # plaintext
 
     '''Contruct BatchPlan'''
-    myBatchPlan.fromMatrix(self_fore_gradient, True)
-    myBatchPlan.matrixAdd([host_fore_gradient], [False])
-    fore_gradient_node = myBatchPlan.root_nodes[0]
-    myBatchPlan.matrixMul([self_feature])
-    print("\n-------------------Batch Plan before weave:-------------------")
-    myBatchPlan.printBatchPlan()
-    print("\n-------------------Batch Plan after weave:-------------------")
-    myBatchPlan.weave()
-    batch_scheme = myBatchPlan.getBatchScheme()
+    max_value = math.ceil(max(np.max(np.abs(self_fore_gradient)), np.max(np.abs(host_fore_gradient))))
+    data_store = DataStorage()
+    if not if_GPU:
+        '''CPU version'''
+        print("CPU version")
+        myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, max_value=max_value, device_type='CPU', multi_process_flag=True, max_processes=40)
+    else:
+        '''GPU version'''
+        print("GPU version")
+        myBatchPlan = BatchPlan(data_store, vector_mem_size=1024, element_mem_size=24, max_value=max_value, device_type='GPU')
+
+
+    op_list = ['batchADD' for _ in range(host_num)]
+    op_list.append('batchMUL_SUM')
+
+    encode_para, batch_scheme = myBatchPlan.generateBatchScheme(op_list, len(self_fore_gradient))
     max_element_num, split_num = batch_scheme[0]
-    print("Element num in one vector: ", + max_element_num)
+    myBatchPlan.setBatchScheme(batch_scheme, force_flag=True)
+    myBatchPlan.setEncoder(encode_para)
+    myBatchPlan.setEncrypter()
+
+    print("\n-------------------Batch Plan Info:-------------------")
+    print("encode_slot_mem: ", + encode_para[2])
+    print("max_element_num: ", + max_element_num)
     print("Split num: ", + split_num)
-    print("Memory of each slot: ", + myBatchPlan.encoder.slot_mem_size)
-    print("Memory of extra sign bits: ", + myBatchPlan.encoder.sign_bits)
 
     '''Encrypt'''
+    time1 = time.time()
     print("\n-------------------Encryption:-------------------")
     encrypter = PaillierEncrypt()
     encrypter.generate_key()
-    myBatchPlan.setEncrypter()
-    encrypted_row_vec = myBatchPlan.encrypt(self_fore_gradient, batch_scheme[0], encrypter.public_key)
-
-    '''Assign encrypted vector'''
-    myBatchPlan.assignEncryptedVector(0, 0, encrypted_row_vec)
+    temp = host_fore_gradient.reshape((1, host_fore_gradient.shape[0]))
+    encrypted_row_vec = myBatchPlan.encrypt(temp, batch_scheme[0], encrypter.public_key)
+    time2 = time.time()
+    print("Encryption time: ", + time2 - time1)
 
     print("\n-------------------Begin to exec Batch Plan.-------------------")
-    outputs = myBatchPlan.parallelExec()
-    '''Decrypt & shift sum'''
-    res = []
-    for output in outputs:
-        # each output represent the output of one root node
-        row_vec = []
-        for element in output:
-            real_res = 0
-            for batch_encrypted_number_idx in range(len(element)):
-                temp = myBatchPlan.decrypt(element[batch_encrypted_number_idx], encrypter.privacy_key)
-                real_res += temp[batch_encrypted_number_idx]
-            row_vec.append(real_res)
-        res.append(row_vec)
-    outputs = res
-    '''Calculate bias'''
-    bias_middle_grad = fore_gradient_node.getBatchData()
-    bias_middle_grad.value = bias_middle_grad.value.sum()
-    bias_grad = sum(myBatchPlan.decrypt(bias_middle_grad, encrypter.privacy_key))
+    # Addition
+    if not if_GPU:
+        fore_gradients = myBatchPlan.split_row_vec(self_fore_gradient)
+        fore_gradients = myBatchPlan.BatchAddParallel(encrypted_row_vec, fore_gradients)
+    else:
+        fore_gradients = np.hstack((self_fore_gradient, np.zeros(max_element_num * split_num - len(self_fore_gradient))))
+        fore_gradients = myBatchPlan.BatchAddGPU(encrypted_row_vec, fore_gradients)
+    time1 = time.time()
+    print("Addition time: ", + time1 - time2)
+    # r1 = self_fore_gradient + host_fore_gradient
+    # r2 = myBatchPlan.decrypt(fore_gradients, encrypter.privacy_key)
+    # print(r1[0], r1[100], r1[299])
+    # print(r2[0], r2[100], r2[299])
 
-    row_num, col_num = myBatchPlan.matrix_shape
-    output_matrix = np.zeros(myBatchPlan.matrix_shape)
-    for row_id in range(row_num):
-        output_matrix[row_id, :] = outputs[row_id][0:col_num]
-    print("\n-------------------Batch Plan output:-------------------")
-    print("unilateral_gradient: ", output_matrix)
-    print("bias gradient: ", bias_grad)
-    print("\n-------------------Numpy output:-------------------")
-    result = (self_fore_gradient+host_fore_gradient).dot(self_feature)
-    plain_bias = (self_fore_gradient+host_fore_gradient).sum()
-    print(result)
-    print(plain_bias)
-    if np.allclose(output_matrix, result):
+    # Multiplication
+    bias_middle_grad = BatchEncryptedNumber(fore_gradients.value, fore_gradients.scaling, fore_gradients.size)
+    if not if_GPU:
+        bias_middle_grad.value = bias_middle_grad.sum()
+        unilateral_middle_gradient = myBatchPlan.BatchMulParallel(fore_gradients, self_feature)
+    else:
+        bias_middle_grad.value = fore_gradients.value.sum()
+        unilateral_middle_gradient = myBatchPlan.BatchMulGPU(fore_gradients, self_feature)
+    unilateral_middle_gradient.append(bias_middle_grad)
+    time2 = time.time()
+    print("Multiplication time: ", + time2 - time1)
+
+    '''Decrypt & shift sum'''
+    guest_unilateral_gradient = []
+    for ben_idx in range(len(unilateral_middle_gradient)):
+        if ben_idx != len(unilateral_middle_gradient) - 1:
+            # handle unilateral_middle_gradient
+            plain_vec = myBatchPlan.decrypt(unilateral_middle_gradient[ben_idx], encrypter.privacy_key)
+            real_res = 0
+            for element_vec in plain_vec:
+                real_res += sum(element_vec)
+            guest_unilateral_gradient.append(real_res)
+        else:
+            # handle bias_middle_grad
+            guest_unilateral_gradient.append(sum(myBatchPlan.decrypt(unilateral_middle_gradient[ben_idx], encrypter.privacy_key)))
+    time1 = time.time()
+    print("Decryption time: ", + time1 - time2)
+
+    print("\n-------------------Result of ciphertexts:-------------------")
+    print(np.array(guest_unilateral_gradient))
+
+    '''Result of plaintexts'''
+    print("\n-------------------Result of plaintexts:-------------------")
+    res = (self_fore_gradient + host_fore_gradient).dot(self_feature)
+    bias = (self_fore_gradient + host_fore_gradient).sum()
+    res = np.hstack((res, bias))
+    print(res)
+
+    if np.allclose(guest_unilateral_gradient, res):
         print("\n-------------------Test Pass!-------------------")
     else:
         print("\n-------------------Test Fail-------------------")
-        print(output_matrix == result)
+        print(guest_unilateral_gradient == res)
+
+
+    # res = []
+    # for output in outputs:
+    #     # each output represent the output of one root node
+    #     row_vec = []
+    #     for element in output:
+    #         real_res = 0
+    #         for batch_encrypted_number_idx in range(len(element)):
+    #             temp = myBatchPlan.decrypt(element[batch_encrypted_number_idx], encrypter.privacy_key)
+    #             real_res += temp[batch_encrypted_number_idx]
+    #         row_vec.append(real_res)
+    #     res.append(row_vec)
+    # outputs = res
+    # '''Calculate bias'''
+    # bias_middle_grad = fore_gradient_node.getBatchData()
+    # bias_middle_grad.value = bias_middle_grad.value.sum()
+    # bias_grad = sum(myBatchPlan.decrypt(bias_middle_grad, encrypter.privacy_key))
+
+    # row_num, col_num = myBatchPlan.matrix_shape
+    # output_matrix = np.zeros(myBatchPlan.matrix_shape)
+    # for row_id in range(row_num):
+    #     output_matrix[row_id, :] = outputs[row_id][0:col_num]
+    # print("\n-------------------Batch Plan output:-------------------")
+    # print("unilateral_gradient: ", output_matrix)
+    # print("bias gradient: ", bias_grad)
+    # print("\n-------------------Numpy output:-------------------")
+    # result = (self_fore_gradient+host_fore_gradient).dot(self_feature)
+    # plain_bias = (self_fore_gradient+host_fore_gradient).sum()
+    # print(result)
+    # print(plain_bias)
+    # if np.allclose(output_matrix, result):
+    #     print("\n-------------------Test Pass!-------------------")
+    # else:
+    #     print("\n-------------------Test Fail-------------------")
+    #     print(output_matrix == result)
 
 def shift_sum():
     data_store = DataStorage()
@@ -385,4 +457,4 @@ def test_para_add():
     print(np.array(dec))
     print((matrixA + matrixB).dot(matrixC))
 
-encrypted_mul()
+lr_procedure()

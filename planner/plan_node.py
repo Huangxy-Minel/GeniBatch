@@ -449,6 +449,27 @@ class PlanNode(object):
             raise NotImplementedError("The scaling of ADD inputs is invalid!")
         res = self_encrypted_vec.batch_add(other_batch_data)
         return res
+    
+    # @staticmethod
+    # def cpuMultiBatchADD(self_encrypted_vec:BatchEncryptedNumber, other_row_vec, encoder:BatchEncoder):
+    #     '''
+    #         Execute ADD operator, sum self_batch_data and other_row_vec
+    #         Batch data of each children: a list of PaillierEncryptedNumber, store in BatchEncryptedNumber.value
+    #     '''
+    #     '''Init scaling'''
+    #     scaling = self_encrypted_vec.scaling
+    #     if not isinstance(other_row_vec, BatchEncryptedNumber):
+    #         # encode firstly
+    #         other_batch_data = [encoder.batchEncode(split_row_vec) for split_row_vec in other_row_vec]    # a list of BatchEncoderNumber
+    #     else:
+    #         other_batch_data = other_row_vec
+    #     '''Re-scaling'''
+    #     if scaling < encoder.scaling:
+    #         other_batch_data = [v * int(encoder.scaling / scaling) for v in other_batch_data]
+    #     elif scaling > encoder.scaling:
+    #         raise NotImplementedError("The scaling of ADD inputs is invalid!")
+    #     res = self_encrypted_vec.batch_add(other_batch_data)
+    #     return res
 
     def gpuBatchADD(self, self_batch_data:BatchEncryptedNumber, encoder:BatchEncoder):
         '''

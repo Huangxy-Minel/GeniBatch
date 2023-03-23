@@ -276,6 +276,10 @@ class BatchPlan(object):
             node_in_level = nodes_next_level
 
     def generateBatchScheme(self, operatorSequence, vec_len=None):
+        self.element_mem_size += math.ceil(math.log2(self.max_value))
+        if self.element_mem_size % 8 != 0:
+            self.element_mem_size += 8 - self.element_mem_size % 8
+
         max_slot_size = self.element_mem_size
         mul_times = 0
         add_times = 0
@@ -292,7 +296,6 @@ class BatchPlan(object):
                 sum_times += 1
             elif operator == 'batchMUL_SUM':
                 max_slot_size += self.element_mem_size + math.ceil(math.log2(vec_len))
-                print(max_slot_size)
                 mul_times += 1
                 sum_times += 1
             else:
@@ -526,9 +529,14 @@ class BatchPlan(object):
         return res
 
     def BatchAddGPU(self, batch_enc_A, array_B):
-        encoded_B = FPN_store.batch_encode(array_B, self.encoder.scaling, self.encoder.size, self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits, batch_enc_A.value.pub_key)
+        scaling = batch_enc_A.scaling
+        if isinstance(array_B, BatchEncryptedNumber):
+            encoded_B = array_B.value
+        else:
+            encoded_B = FPN_store.batch_encode(array_B, self.encoder.scaling, self.encoder.size, self.encoder.slot_mem_size, self.encoder.bit_width, self.encoder.sign_bits, batch_enc_A.value.pub_key)
+
         res = batch_enc_A.value + encoded_B
-        return BatchEncryptedNumber(res, batch_enc_A.scaling, batch_enc_A.size)
+        return BatchEncryptedNumber(res, scaling, self.encoder.size)
 
 
     def BatchAddParallel(self, batch_enc_A, batch_B):
@@ -537,8 +545,12 @@ class BatchPlan(object):
         enc_size = batch_enc_A.size
         A_in_partition = [BatchEncryptedNumber(batch_enc_A.value[i:i+tasks_num_per_proc], scaling, enc_size) 
                                                                 for i in range(0, batch_enc_A.get_value_length(), tasks_num_per_proc)]
-        B_in_partition = [batch_B[i:i+tasks_num_per_proc]
-                                                                for i in range(0, len(batch_B), tasks_num_per_proc)]
+        if isinstance(batch_B, BatchEncryptedNumber):
+            B_in_partition = [BatchEncryptedNumber(batch_B.value[i:i+tasks_num_per_proc], scaling, enc_size) 
+                                                                    for i in range(0, batch_B.get_value_length(), tasks_num_per_proc)]
+        else:
+            B_in_partition = [batch_B[i:i+tasks_num_per_proc]
+                                                                    for i in range(0, len(batch_B), tasks_num_per_proc)]
         pool = multiprocessing.Pool(processes=len(A_in_partition))
         sub_process = [pool.apply_async(PlanNode.cpuBatchADD, (b1, b2, self.encoder,)) for b1, b2 in zip(A_in_partition, B_in_partition)]
         pool.close()
@@ -587,7 +599,7 @@ class BatchPlan(object):
             mul_res.append(temp)
 
         return mul_res
-        
+
     def split_row_vec(self, row_vec):
         element_num, split_num = self.batch_scheme[0]
         row_vec_split = [row_vec[i:i+element_num] for i in range(0, len(row_vec), element_num)]
@@ -612,7 +624,32 @@ class BatchPlan(object):
             level += 1
 
 
+    # def BatchMultiAddParallel(self, enc_vecs, unenc_vecs):
+    #     tasks_num_per_proc = math.ceil(len(enc_vecs[0].value) / self.max_processes)
+    #     scaling = enc_vecs[0].scaling
+    #     enc_size = enc_vecs[0].size
+    #     # prepare data
+    #     enc_vecs_in_partition = []
+    #     unenc_vecs_in_partition = []
+    #     for enc_vec in enc_vecs:
+    #         temp = [BatchEncryptedNumber(enc_vec.value[i:i+tasks_num_per_proc], scaling, enc_size) 
+    #                                                             for i in range(0, enc_vec.get_value_length(), tasks_num_per_proc)]
+    #         enc_vecs_in_partition.append(temp)
 
+    #     for unenc_vec in unenc_vecs:
+    #         temp = [unenc_vec[i:i+tasks_num_per_proc]
+    #                                                             for i in range(0, len(unenc_vec), tasks_num_per_proc)]
+    #         unenc_vecs_in_partition.append(temp)
+            
+    #     pool = multiprocessing.Pool(processes=len(enc_vecs_in_partition[0]))
+    #     sub_process = [pool.apply_async(PlanNode.cpuMultiBatchADD, (b1, b2, self.encoder,)) for b1, b2 in zip(A_in_partition, B_in_partition)]
+    #     pool.close()
+    #     pool.join()
+    #     res = [p.get() for p in sub_process]
+    #     add_res = res[0]
+    #     for i in range(1, len(res)):
+    #         add_res.merge(res[i])
+    #     return add_res
         
         
         
